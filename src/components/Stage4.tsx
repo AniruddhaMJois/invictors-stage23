@@ -168,7 +168,7 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
             <div className="font-semibold text-slate-300">Parameter Mapping:</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
               <div className="p-2 rounded bg-slate-900 border border-slate-800">
-                <span className="text-cyan-400 font-bold">1:</span> Stage 1 answer (anything non-empty)
+                <span className="text-cyan-400 font-bold">1:</span> Stage 1 answer
               </div>
               <div className="p-2 rounded bg-slate-900 border border-slate-800">
                 <span className="text-cyan-400 font-bold">2.1:</span> Fragment code from Stage 2

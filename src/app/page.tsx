@@ -5,18 +5,15 @@ import TeamRegistration from '@/components/TeamRegistration';
 import Stage2 from '@/components/Stage2';
 import Stage3 from '@/components/Stage3';
 import Stage4 from '@/components/Stage4';
-import { isSupabaseConfigured, TeamRecord } from '@/lib/supabase';
+import { TeamRecord } from '@/lib/supabase';
 import {
   Shield,
   Users,
-  Database,
   Lock,
   Unlock,
   KeyRound,
   CheckCircle2,
   LogOut,
-  HelpCircle,
-  Flag,
 } from 'lucide-react';
 
 const ACTIVE_TEAM_STORAGE_KEY = 'cipher_quest_active_team';
@@ -25,7 +22,6 @@ export default function Home() {
   const [activeTeam, setActiveTeam] = useState<TeamRecord | null>(null);
   const [activeStage, setActiveStage] = useState<2 | 3 | 4>(2);
   const [isClient, setIsClient] = useState(false);
-  const [showConfigModal, setShowConfigModal] = useState(false);
 
   // Restore stored session on mount
   useEffect(() => {
@@ -143,24 +139,6 @@ export default function Home() {
 
           {/* Right Header Statuses */}
           <div className="flex items-center gap-3">
-            {/* Supabase status badge */}
-            <button
-              type="button"
-              onClick={() => setShowConfigModal(true)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-mono transition cursor-pointer ${
-                isSupabaseConfigured
-                  ? 'bg-emerald-950/50 border-emerald-700/60 text-emerald-300 hover:bg-emerald-900/50'
-                  : 'bg-amber-950/50 border-amber-700/60 text-amber-300 hover:bg-amber-900/50'
-              }`}
-              title="Click to view Supabase setup instructions"
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                {isSupabaseConfigured ? 'Supabase Synced' : 'Supabase Setup'}
-              </span>
-              <span className="w-2 h-2 rounded-full animate-ping bg-emerald-400" />
-            </button>
-
             {activeTeam && (
               <button
                 type="button"
@@ -286,53 +264,10 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <span>Cipher Quest • Automated Real-Time Sync</span>
-          <button
-            type="button"
-            onClick={() => setShowConfigModal(true)}
-            className="text-cyan-400 hover:underline flex items-center gap-1"
-          >
-            <HelpCircle className="w-3 h-3" />
-            <span>Supabase Setup Guide</span>
-          </button>
+        <div className="max-w-6xl mx-auto px-4 text-center">
+          <span>Cipher Quest • Live Real-Time Synchronized Engine</span>
         </div>
       </footer>
-
-      {/* Supabase Setup Modal */}
-      {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl max-w-xl w-full p-6 text-left shadow-2xl relative">
-            <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
-              <Database className="w-5 h-5 text-cyan-400" />
-              Supabase Configuration Instructions
-            </h3>
-            <p className="text-slate-400 text-xs sm:text-sm mb-4">
-              To sync all team submissions, cipher clicks, and pre-existing records:
-            </p>
-
-            <ol className="list-decimal list-inside space-y-2.5 text-xs text-slate-300 font-mono mb-6 bg-slate-950 p-4 rounded-xl border border-slate-800">
-              <li>
-                In Supabase, run the contents of <span className="text-cyan-400">supabase.sql</span> in SQL Editor.
-              </li>
-              <li>
-                All teams automatically get dedicated activity log tables (`team_&lt;number&gt;_logs`).
-              </li>
-              <li>All stages (Stage 2, Stage 3, and Stage 4) sync in real time!</li>
-            </ol>
-
-            <div className="flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setShowConfigModal(false)}
-                className="py-2.5 px-5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
