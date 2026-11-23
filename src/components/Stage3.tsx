@@ -156,13 +156,27 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
             <div className="relative">
               <textarea
                 rows={4}
-                placeholder="Enter the secret sentence..."
+                placeholder="Enter the secret sentence (minimum 15 words)..."
                 value={sentenceInput}
                 onChange={(e) => setSentenceInput(e.target.value)}
                 disabled={solved}
                 className="w-full px-4 py-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-mono leading-relaxed disabled:opacity-75"
                 required
               />
+            </div>
+            <div className="flex items-center justify-between mt-1.5 text-xs">
+              <span className="text-slate-400">
+                Constraint: Minimum 15 words
+              </span>
+              <span
+                className={`font-mono font-semibold ${
+                  sentenceInput.trim().split(/\s+/).filter(Boolean).length >= 15
+                    ? 'text-emerald-400'
+                    : 'text-amber-400'
+                }`}
+              >
+                {sentenceInput.trim().split(/\s+/).filter(Boolean).length} / 15 words
+              </span>
             </div>
           </div>
 

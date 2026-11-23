@@ -207,6 +207,8 @@ export function generateDecoyJunk(type: string, currentString: string): string {
 // Stage 3 Validation
 export interface Stage3ValidationResult {
   isValid: boolean;
+  hasMinWords: boolean;
+  wordCount: number;
   hasRoleIntro: boolean;
   hasFragmentCode: boolean;
   hasSecretWord: boolean;
@@ -218,9 +220,13 @@ export interface Stage3ValidationResult {
 export function validateStage3Sentence(teamNumber: number, sentence: string): Stage3ValidationResult {
   const group = getTeamGroup(teamNumber);
   const cleanSentence = sentence.trim();
-  const lowerSentence = cleanSentence.toLowerCase();
 
-  // 1. Check for "i am " or "i'm " pattern with a role
+  // 1. Check minimum 15 words
+  const words = cleanSentence.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const hasMinWords = wordCount >= 15;
+
+  // 2. Check for "i am " or "i'm " pattern with a role
   // e.g., "i am commander...", "i am an engineer...", "I am agent 007..."
   const roleRegex = /\b(?:i\s*am|i['’]m)\s+([a-zA-Z0-9_\-\s]{2,30}?)(?=\s+(?:and|with|having|code|secret|my|,|\.|$))/i;
   const broadIntroRegex = /\b(?:i\s*am|i['’]m)\s+([a-zA-Z0-9_\-]+)/i;
@@ -229,29 +235,29 @@ export function validateStage3Sentence(teamNumber: number, sentence: string): St
   const hasRoleIntro = !!roleMatch;
   const extractedRole = roleMatch ? roleMatch[1].trim() : undefined;
 
-  // 2. Check fragment code (case-insensitive)
+  // 3. Check fragment code (case-insensitive)
   const fragmentCodeRegex = new RegExp(`\\b${group.fragmentCode}\\b`, 'i');
   const hasFragmentCode = fragmentCodeRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.fragmentCode.toLowerCase());
 
-  // 3. Check secret word (case-insensitive)
+  // 4. Check secret word (case-insensitive)
   const secretWordRegex = new RegExp(`\\b${group.secretWord}\\b`, 'i');
   const hasSecretWord = secretWordRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.secretWord.toLowerCase());
 
   let errorMessage: string | undefined = undefined;
-  if (!hasRoleIntro) {
+  if (!hasMinWords) {
+    errorMessage = `Sentence too short (${wordCount}/15 words). The secret sentence must contain a minimum of 15 words.`;
+  } else if (!hasRoleIntro) {
     errorMessage = 'Sentence must begin or contain an "I am [role]" declaration (e.g. "I am Commander...").';
-  } else if (!hasFragmentCode && !hasSecretWord) {
-    errorMessage = `Missing your team's assigned fragment code (${group.fragmentCode}) and secret word (${group.secretWord}).`;
-  } else if (!hasFragmentCode) {
-    errorMessage = `Missing your team's assigned fragment code (${group.fragmentCode}).`;
-  } else if (!hasSecretWord) {
-    errorMessage = `Missing your team's assigned secret word (${group.secretWord}).`;
+  } else if (!hasFragmentCode || !hasSecretWord) {
+    errorMessage = 'Sentence verification failed: Missing or invalid fragment code or secret word from Stage 2.';
   }
 
-  const isValid = hasRoleIntro && hasFragmentCode && hasSecretWord;
+  const isValid = hasMinWords && hasRoleIntro && hasFragmentCode && hasSecretWord;
 
   return {
     isValid,
+    hasMinWords,
+    wordCount,
     hasRoleIntro,
     hasFragmentCode,
     hasSecretWord,
