@@ -5,6 +5,7 @@ import TeamRegistration from '@/components/TeamRegistration';
 import Stage2 from '@/components/Stage2';
 import Stage3 from '@/components/Stage3';
 import Stage4 from '@/components/Stage4';
+import TimerHUD from '@/components/TimerHUD';
 import { TeamRecord } from '@/lib/supabase';
 import {
   Shield,
@@ -102,6 +103,15 @@ export default function Home() {
     setActiveStage(4);
   };
 
+  const handleStage4Completed = (updated: TeamRecord) => {
+    setActiveTeam(updated);
+    try {
+      localStorage.setItem(ACTIVE_TEAM_STORAGE_KEY, JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
   if (!isClient) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-sm">
@@ -137,8 +147,14 @@ export default function Home() {
             </div>
           </div>
 
-          {/* Right Header Statuses */}
+          {/* Right Header Statuses with Timer Always Visible */}
           <div className="flex items-center gap-3">
+            <TimerHUD
+              questStartedAt={activeTeam?.quest_started_at || activeTeam?.stage2_started_at}
+              isCompleted={activeTeam?.stage4_solved}
+              totalDurationSeconds={activeTeam?.total_duration_seconds}
+            />
+
             {activeTeam && (
               <button
                 type="button"
@@ -256,7 +272,11 @@ export default function Home() {
                 onProceedToStage4={handleStage3Solved}
               />
             ) : (
-              <Stage4 team={activeTeam} onGoToStage3={() => setActiveStage(3)} />
+              <Stage4
+                team={activeTeam}
+                onGoToStage3={() => setActiveStage(3)}
+                onStage4Completed={handleStage4Completed}
+              />
             )}
           </div>
         )}

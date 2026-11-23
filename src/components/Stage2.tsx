@@ -9,7 +9,7 @@ import {
   rot13,
   generateDecoyJunk,
 } from '@/lib/gameData';
-import { logActivity, recordStage2Completion, TeamRecord } from '@/lib/supabase';
+import { recordStage2Completion, recordStage2Start, TeamRecord } from '@/lib/supabase';
 import {
   Terminal,
   RotateCcw,
@@ -51,6 +51,13 @@ export default function Stage2({ team, onProceedToStage3 }: Props) {
       setIsSolved(true);
     }
   }, [team.stage2_solved, cipherStages.originalString]);
+
+  // Start Stage 2 / Quest timer as soon as user enters Stage 2
+  useEffect(() => {
+    if (!team.stage2_started_at) {
+      recordStage2Start(team.team_name, team.team_number);
+    }
+  }, [team.stage2_started_at, team.team_name, team.team_number]);
 
   // Shuffled cipher buttons list (not clustered together, all uniform size)
   const buttons: CipherButton[] = useMemo(() => {

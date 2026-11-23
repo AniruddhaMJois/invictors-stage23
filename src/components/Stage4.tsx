@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { validateStage4Flag, getTeamGroup } from '@/lib/gameData';
-import { recordStage4Completion, logActivity, TeamRecord } from '@/lib/supabase';
+import { recordStage4Completion, logActivity, formatDuration, TeamRecord } from '@/lib/supabase';
 import {
   Flag,
   Trophy,
@@ -13,17 +13,17 @@ import {
   Sparkles,
   Lock,
   Compass,
-  KeyRound,
-  ShieldCheck,
   Send,
+  Clock,
 } from 'lucide-react';
 
 interface Props {
   team: TeamRecord;
   onGoToStage3: () => void;
+  onStage4Completed?: (updated: TeamRecord) => void;
 }
 
-export default function Stage4({ team, onGoToStage3 }: Props) {
+export default function Stage4({ team, onGoToStage3, onStage4Completed }: Props) {
   const group = getTeamGroup(team.team_number);
 
   const [flagInput, setFlagInput] = useState(team.stage4_submission || '');
@@ -31,13 +31,37 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [solved, setSolved] = useState(team.stage4_solved || false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [completionStats, setCompletionStats] = useState<{
+    stage2Duration?: number | null;
+    stage3Duration?: number | null;
+    stage4Duration?: number | null;
+    totalDuration?: number | null;
+  }>({
+    stage2Duration: team.stage2_duration_seconds,
+    stage3Duration: team.stage3_duration_seconds,
+    stage4Duration: team.stage4_duration_seconds,
+    totalDuration: team.total_duration_seconds,
+  });
 
   useEffect(() => {
     if (team.stage4_solved) {
       setSolved(true);
       setFlagInput(team.stage4_submission || '');
+      setCompletionStats({
+        stage2Duration: team.stage2_duration_seconds,
+        stage3Duration: team.stage3_duration_seconds,
+        stage4Duration: team.stage4_duration_seconds,
+        totalDuration: team.total_duration_seconds,
+      });
     }
-  }, [team.stage4_solved, team.stage4_submission]);
+  }, [
+    team.stage4_solved,
+    team.stage4_submission,
+    team.stage2_duration_seconds,
+    team.stage3_duration_seconds,
+    team.stage4_duration_seconds,
+    team.total_duration_seconds,
+  ]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,7 +96,6 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
 
     // Flag captured successfully!
     setSolved(true);
-    setShowSuccessModal(true);
     setIsSubmitting(false);
 
     // Trigger grand celebration confetti
@@ -82,8 +105,21 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
       origin: { y: 0.5 },
     });
 
-    // Record in Supabase
-    await recordStage4Completion(team.team_name, team.team_number, flagInput.trim());
+    // Record in Supabase and capture calculated durations
+    const updated = await recordStage4Completion(team.team_name, team.team_number, flagInput.trim());
+    if (updated) {
+      setCompletionStats({
+        stage2Duration: updated.stage2_duration_seconds,
+        stage3Duration: updated.stage3_duration_seconds,
+        stage4Duration: updated.stage4_duration_seconds,
+        totalDuration: updated.total_duration_seconds,
+      });
+      if (onStage4Completed) {
+        onStage4Completed(updated);
+      }
+    }
+
+    setShowSuccessModal(true);
   };
 
   // If Stage 3 is not yet solved, show locked warning
@@ -243,7 +279,7 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
           )}
         </form>
 
-        {/* PERSISTENT VICTORY CARD */}
+        {/* PERSISTENT VICTORY CARD WITH STAGE-BY-STAGE TIME ANALYTICS */}
         {solved && (
           <div className="mt-8 pt-6 border-t border-slate-800">
             <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-br from-rose-950/70 via-slate-900 to-slate-950 border-2 border-rose-500/80 text-center shadow-2xl shadow-rose-500/20">
@@ -267,16 +303,50 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
                 {flagInput}
               </div>
 
+              {/* STAGE BY STAGE TIME ANALYTICS BREAKDOWN */}
+              <div className="mb-6 pt-4 border-t border-slate-800/80">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3 flex items-center justify-center gap-2">
+                  <Clock className="w-4 h-4 text-cyan-400" />
+                  <span>Stage-by-Stage Completion Times</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left text-xs font-mono max-w-xl mx-auto">
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] uppercase">Stage 2 Time</span>
+                    <span className="text-cyan-400 font-bold text-sm">
+                      {formatDuration(completionStats.stage2Duration)}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] uppercase">Stage 3 Time</span>
+                    <span className="text-purple-400 font-bold text-sm">
+                      {formatDuration(completionStats.stage3Duration)}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                    <span className="text-slate-500 block text-[10px] uppercase">Stage 4 Time</span>
+                    <span className="text-rose-400 font-bold text-sm">
+                      {formatDuration(completionStats.stage4Duration)}
+                    </span>
+                  </div>
+                  <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-600/60">
+                    <span className="text-emerald-400 block text-[10px] uppercase font-bold">Total Elapsed</span>
+                    <span className="text-emerald-300 font-black text-sm">
+                      {formatDuration(completionStats.totalDuration)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="flex items-center justify-center gap-2 text-xs text-emerald-400 font-semibold">
                 <Sparkles className="w-4 h-4" />
-                <span>Final completion time and flag recorded in Supabase!</span>
+                <span>All stage times and final flag recorded in Supabase!</span>
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* STAGE 4 SUCCESS POP-UP MODAL BOX WITH MANDATORY NOTE */}
+      {/* STAGE 4 SUCCESS POP-UP MODAL BOX WITH MANDATORY NOTE & TIME BREAKDOWN */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-rose-500/80 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl shadow-rose-500/20 text-center relative">
@@ -303,6 +373,26 @@ export default function Stage4({ team, onGoToStage3 }: Props) {
             {/* Validated Flag */}
             <div className="p-4 rounded-xl bg-slate-950 border border-rose-600/60 text-rose-300 font-mono font-bold text-sm sm:text-base break-all mb-5 select-all shadow-inner">
               {flagInput}
+            </div>
+
+            {/* Stage Time Breakdown in Modal */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-left text-xs font-mono mb-6">
+              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <span className="text-slate-500 block text-[10px] uppercase">Stage 2</span>
+                <span className="text-cyan-400 font-bold">{formatDuration(completionStats.stage2Duration)}</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <span className="text-slate-500 block text-[10px] uppercase">Stage 3</span>
+                <span className="text-purple-400 font-bold">{formatDuration(completionStats.stage3Duration)}</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-slate-950 border border-slate-800">
+                <span className="text-slate-500 block text-[10px] uppercase">Stage 4</span>
+                <span className="text-rose-400 font-bold">{formatDuration(completionStats.stage4Duration)}</span>
+              </div>
+              <div className="p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-600/60">
+                <span className="text-emerald-400 block text-[10px] uppercase font-bold">Total</span>
+                <span className="text-emerald-300 font-black">{formatDuration(completionStats.totalDuration)}</span>
+              </div>
             </div>
 
             <button

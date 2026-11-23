@@ -25,14 +25,22 @@ export interface TeamRecord {
   assigned_fragment_code: string;
   assigned_secret_word: string;
   assigned_final_codeword: string;
+  quest_started_at?: string | null;
+  stage2_started_at?: string | null;
   stage2_solved: boolean;
   stage2_solved_at?: string | null;
+  stage2_duration_seconds?: number | null;
+  stage3_started_at?: string | null;
   stage3_solved: boolean;
   stage3_submission?: string | null;
   stage3_solved_at?: string | null;
+  stage3_duration_seconds?: number | null;
+  stage4_started_at?: string | null;
   stage4_solved: boolean;
   stage4_submission?: string | null;
   stage4_solved_at?: string | null;
+  stage4_duration_seconds?: number | null;
+  total_duration_seconds?: number | null;
   current_stage: number;
   created_at?: string;
   updated_at?: string;
@@ -41,6 +49,24 @@ export interface TeamRecord {
 // Local storage key for offline/fallback caching
 const LOCAL_STORAGE_TEAMS_KEY = 'cipher_quest_teams_cache';
 const LOCAL_STORAGE_LOGS_KEY = 'cipher_quest_logs_cache';
+
+// Helper to format seconds into readable "Xm Ys" or "Xs"
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || isNaN(seconds)) return '--';
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (m === 0) return `${s}s`;
+  return `${m}m ${s}s`;
+}
+
+// Helper for live stopwatch timer "HH:MM:SS"
+export function formatStopwatchTime(totalSeconds: number): string {
+  if (totalSeconds < 0 || isNaN(totalSeconds)) return '00:00:00';
+  const hrs = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
 
 // Fetch existing team data by team name or team number
 export async function fetchTeamData(teamName: string, teamNumber: number): Promise<TeamRecord | null> {
@@ -105,14 +131,22 @@ export async function syncTeamRegistration(
     assigned_fragment_code: group.fragmentCode,
     assigned_secret_word: group.secretWord,
     assigned_final_codeword: group.finalCodeword,
+    quest_started_at: existing?.quest_started_at || null,
+    stage2_started_at: existing?.stage2_started_at || null,
     stage2_solved: existing?.stage2_solved || false,
     stage2_solved_at: existing?.stage2_solved_at || null,
+    stage2_duration_seconds: existing?.stage2_duration_seconds || null,
+    stage3_started_at: existing?.stage3_started_at || null,
     stage3_solved: existing?.stage3_solved || false,
     stage3_submission: existing?.stage3_submission || null,
     stage3_solved_at: existing?.stage3_solved_at || null,
+    stage3_duration_seconds: existing?.stage3_duration_seconds || null,
+    stage4_started_at: existing?.stage4_started_at || null,
     stage4_solved: existing?.stage4_solved || false,
     stage4_submission: existing?.stage4_submission || null,
     stage4_solved_at: existing?.stage4_solved_at || null,
+    stage4_duration_seconds: existing?.stage4_duration_seconds || null,
+    total_duration_seconds: existing?.total_duration_seconds || null,
     current_stage: existing?.current_stage || 2,
   };
 
@@ -158,6 +192,54 @@ export async function syncTeamRegistration(
   });
 
   return teamData;
+}
+
+// Record starting of Stage 2 (Starts the global quest timer as soon as user enters Stage 2)
+export async function recordStage2Start(
+  teamName: string,
+  teamNumber: number
+): Promise<TeamRecord | null> {
+  const existing = await fetchTeamData(teamName, teamNumber);
+  if (existing?.quest_started_at && existing?.stage2_started_at) {
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const updates = {
+    quest_started_at: existing?.quest_started_at || now,
+    stage2_started_at: existing?.stage2_started_at || now,
+  };
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('teams')
+        .update(updates)
+        .eq('team_name', teamName);
+    } catch (err) {
+      console.warn('Error starting stage 2 timer in Supabase:', err);
+    }
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = localStorage.getItem(LOCAL_STORAGE_TEAMS_KEY) || '{}';
+      const cache = JSON.parse(stored);
+      if (cache[teamName.toLowerCase()]) {
+        cache[teamName.toLowerCase()].quest_started_at = updates.quest_started_at;
+        cache[teamName.toLowerCase()].stage2_started_at = updates.stage2_started_at;
+        localStorage.setItem(LOCAL_STORAGE_TEAMS_KEY, JSON.stringify(cache));
+      }
+    } catch (e) {
+      console.warn('Failed updating local storage', e);
+    }
+  }
+
+  await logActivity(teamName, teamNumber, 2, 'STAGE2_STARTED', {
+    started_at: now,
+  });
+
+  return existing ? { ...existing, ...updates } : null;
 }
 
 // Log actions into team-specific activity logs tables in Supabase (e.g. team_1_logs, team_2_logs, etc.)
@@ -240,22 +322,31 @@ export async function fetchTeamLogs(teamNumber: number): Promise<unknown[]> {
   return [];
 }
 
-// Update Stage 2 completion (Only one log entry for Stage 2 as specified: "final answer is generated by this team")
+// Update Stage 2 completion: computes duration and sets Stage 3 start
 export async function recordStage2Completion(
   teamName: string,
   teamNumber: number,
   solvedString: string
-): Promise<void> {
+): Promise<TeamRecord | null> {
+  const existing = await fetchTeamData(teamName, teamNumber);
   const now = new Date().toISOString();
+
+  const startIso = existing?.stage2_started_at || existing?.quest_started_at || now;
+  const stage2Duration = Math.max(1, Math.round((new Date(now).getTime() - new Date(startIso).getTime()) / 1000));
+
+  const updates = {
+    stage2_solved: true,
+    stage2_solved_at: now,
+    stage2_duration_seconds: stage2Duration,
+    stage3_started_at: now,
+    current_stage: 3,
+  };
+
   if (supabase) {
     try {
       await supabase
         .from('teams')
-        .update({
-          stage2_solved: true,
-          stage2_solved_at: now,
-          current_stage: 3,
-        })
+        .update(updates)
         .eq('team_name', teamName);
     } catch (err) {
       console.error('Error recording Stage 2 in Supabase:', err);
@@ -268,9 +359,7 @@ export async function recordStage2Completion(
       const stored = localStorage.getItem(LOCAL_STORAGE_TEAMS_KEY) || '{}';
       const cache = JSON.parse(stored);
       if (cache[teamName.toLowerCase()]) {
-        cache[teamName.toLowerCase()].stage2_solved = true;
-        cache[teamName.toLowerCase()].stage2_solved_at = now;
-        cache[teamName.toLowerCase()].current_stage = 3;
+        Object.assign(cache[teamName.toLowerCase()], updates);
         localStorage.setItem(LOCAL_STORAGE_TEAMS_KEY, JSON.stringify(cache));
       }
     } catch (e) {
@@ -278,32 +367,44 @@ export async function recordStage2Completion(
     }
   }
 
-  // Only one log entry for Stage 2
+  // Only one log entry for Stage 2 as requested
   await logActivity(teamName, teamNumber, 2, 'FINAL_ANSWER_GENERATED', {
     message: 'final answer is generated by this team',
     solvedString,
+    duration_seconds: stage2Duration,
     timestamp: now,
   });
+
+  return existing ? { ...existing, ...updates } : null;
 }
 
-// Update Stage 3 completion
+// Update Stage 3 completion: computes duration and sets Stage 4 start
 export async function recordStage3Completion(
   teamName: string,
   teamNumber: number,
   submissionText: string,
   assignedCodeword: string
-): Promise<void> {
+): Promise<TeamRecord | null> {
+  const existing = await fetchTeamData(teamName, teamNumber);
   const now = new Date().toISOString();
+
+  const startIso = existing?.stage3_started_at || existing?.stage2_solved_at || now;
+  const stage3Duration = Math.max(1, Math.round((new Date(now).getTime() - new Date(startIso).getTime()) / 1000));
+
+  const updates = {
+    stage3_solved: true,
+    stage3_submission: submissionText,
+    stage3_solved_at: now,
+    stage3_duration_seconds: stage3Duration,
+    stage4_started_at: now,
+    current_stage: 4,
+  };
+
   if (supabase) {
     try {
       await supabase
         .from('teams')
-        .update({
-          stage3_solved: true,
-          stage3_submission: submissionText,
-          stage3_solved_at: now,
-          current_stage: 4,
-        })
+        .update(updates)
         .eq('team_name', teamName);
     } catch (err) {
       console.error('Error recording Stage 3 in Supabase:', err);
@@ -316,10 +417,7 @@ export async function recordStage3Completion(
       const stored = localStorage.getItem(LOCAL_STORAGE_TEAMS_KEY) || '{}';
       const cache = JSON.parse(stored);
       if (cache[teamName.toLowerCase()]) {
-        cache[teamName.toLowerCase()].stage3_solved = true;
-        cache[teamName.toLowerCase()].stage3_submission = submissionText;
-        cache[teamName.toLowerCase()].stage3_solved_at = now;
-        cache[teamName.toLowerCase()].current_stage = 4;
+        Object.assign(cache[teamName.toLowerCase()], updates);
         localStorage.setItem(LOCAL_STORAGE_TEAMS_KEY, JSON.stringify(cache));
       }
     } catch (e) {
@@ -330,26 +428,41 @@ export async function recordStage3Completion(
   await logActivity(teamName, teamNumber, 3, 'STAGE3_SOLVED', {
     submissionText,
     assignedCodeword,
+    duration_seconds: stage3Duration,
     timestamp: now,
   });
+
+  return existing ? { ...existing, ...updates } : null;
 }
 
-// Update Stage 4 completion
+// Update Stage 4 completion: computes stage 4 duration and total quest duration
 export async function recordStage4Completion(
   teamName: string,
   teamNumber: number,
   flagSubmission: string
-): Promise<void> {
+): Promise<TeamRecord | null> {
+  const existing = await fetchTeamData(teamName, teamNumber);
   const now = new Date().toISOString();
+
+  const stage4StartIso = existing?.stage4_started_at || existing?.stage3_solved_at || now;
+  const stage4Duration = Math.max(1, Math.round((new Date(now).getTime() - new Date(stage4StartIso).getTime()) / 1000));
+
+  const questStartIso = existing?.quest_started_at || existing?.stage2_started_at || now;
+  const totalDuration = Math.max(1, Math.round((new Date(now).getTime() - new Date(questStartIso).getTime()) / 1000));
+
+  const updates = {
+    stage4_solved: true,
+    stage4_submission: flagSubmission,
+    stage4_solved_at: now,
+    stage4_duration_seconds: stage4Duration,
+    total_duration_seconds: totalDuration,
+  };
+
   if (supabase) {
     try {
       await supabase
         .from('teams')
-        .update({
-          stage4_solved: true,
-          stage4_submission: flagSubmission,
-          stage4_solved_at: now,
-        })
+        .update(updates)
         .eq('team_name', teamName);
     } catch (err) {
       console.error('Error recording Stage 4 in Supabase:', err);
@@ -362,9 +475,7 @@ export async function recordStage4Completion(
       const stored = localStorage.getItem(LOCAL_STORAGE_TEAMS_KEY) || '{}';
       const cache = JSON.parse(stored);
       if (cache[teamName.toLowerCase()]) {
-        cache[teamName.toLowerCase()].stage4_solved = true;
-        cache[teamName.toLowerCase()].stage4_submission = flagSubmission;
-        cache[teamName.toLowerCase()].stage4_solved_at = now;
+        Object.assign(cache[teamName.toLowerCase()], updates);
         localStorage.setItem(LOCAL_STORAGE_TEAMS_KEY, JSON.stringify(cache));
       }
     } catch (e) {
@@ -374,7 +485,10 @@ export async function recordStage4Completion(
 
   await logActivity(teamName, teamNumber, 4, 'STAGE4_FLAG_CAPTURED', {
     flag: flagSubmission,
-    message: 'final flag captured and validated',
+    stage4_duration_seconds: stage4Duration,
+    total_duration_seconds: totalDuration,
     timestamp: now,
   });
+
+  return existing ? { ...existing, ...updates } : null;
 }
