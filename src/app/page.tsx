@@ -14,7 +14,6 @@ import {
   Unlock,
   KeyRound,
   CheckCircle2,
-  LogOut,
 } from 'lucide-react';
 
 const ACTIVE_TEAM_STORAGE_KEY = 'cipher_quest_active_team';
@@ -57,16 +56,6 @@ export default function Home() {
     } else {
       setActiveStage(2);
     }
-  };
-
-  const handleLogout = () => {
-    try {
-      localStorage.removeItem(ACTIVE_TEAM_STORAGE_KEY);
-    } catch {
-      // ignore
-    }
-    setActiveTeam(null);
-    setActiveStage(2);
   };
 
   const handleStage2Solved = () => {
@@ -154,18 +143,6 @@ export default function Home() {
               isCompleted={activeTeam?.stage4_solved}
               totalDurationSeconds={activeTeam?.total_duration_seconds}
             />
-
-            {activeTeam && (
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-rose-950/50 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-medium transition cursor-pointer"
-                title="Switch Team"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Switch Team</span>
-              </button>
-            )}
           </div>
         </div>
       </header>
