@@ -11,7 +11,8 @@ interface Props {
 
 export default function TeamRegistration({ onTeamRegistered }: Props) {
   const [teamName, setTeamName] = useState('');
-  const [members, setMembers] = useState<string[]>(['', '']);
+  // 3 compulsory members initially
+  const [members, setMembers] = useState<string[]>(['', '', '']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,13 +20,15 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
   const detectedGroup = teamNumber !== null ? getTeamGroup(teamNumber) : null;
 
   const handleAddMember = () => {
-    if (members.length < 6) {
+    // Allows adding a 4th member if needed
+    if (members.length < 4) {
       setMembers([...members, '']);
     }
   };
 
   const handleRemoveMember = (index: number) => {
-    if (members.length > 1) {
+    // Only allow removing the 4th optional member (keep minimum 3 compulsory)
+    if (index >= 3) {
       setMembers(members.filter((_, i) => i !== index));
     }
   };
@@ -50,11 +53,17 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
       return;
     }
 
-    const validMembers = members.map((m) => m.trim()).filter(Boolean);
-    if (validMembers.length === 0) {
-      setError('Please add at least one team member name.');
+    // Validate 3 compulsory members
+    const m1 = members[0]?.trim();
+    const m2 = members[1]?.trim();
+    const m3 = members[2]?.trim();
+
+    if (!m1 || !m2 || !m3) {
+      setError('Members 1, 2, and 3 are compulsory. Please provide names for all 3 members.');
       return;
     }
+
+    const validMembers = members.map((m) => m.trim()).filter(Boolean);
 
     setLoading(true);
     try {
@@ -108,7 +117,7 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
               <div className="mt-2.5 p-3 rounded-lg bg-cyan-950/40 border border-cyan-800/50 flex items-center gap-2 text-xs text-cyan-300">
                 <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span>
-                  Detected: <strong className="text-white">Team #{teamNumber}</strong> (Assigned Cipher Group {detectedGroup.groupId})
+                  Detected: <strong className="text-white">Team #{teamNumber}</strong>
                 </span>
               </div>
             )}
@@ -119,38 +128,52 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                 <Users className="w-4 h-4 text-cyan-400" />
-                Team Members <span className="text-cyan-400">*</span>
+                <span>Team Members</span>
+                <span className="text-xs text-cyan-400 font-normal">(3 compulsory, +1 optional)</span>
               </label>
-              <button
-                type="button"
-                onClick={handleAddMember}
-                disabled={members.length >= 6}
-                className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 px-2.5 py-1 rounded-md bg-cyan-950/50 hover:bg-cyan-900/50 border border-cyan-800/40 transition disabled:opacity-40"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                Add Member
-              </button>
+              {members.length < 4 && (
+                <button
+                  type="button"
+                  onClick={handleAddMember}
+                  className="text-xs text-cyan-400 hover:text-cyan-300 flex items-center gap-1 px-2.5 py-1 rounded-md bg-cyan-950/50 hover:bg-cyan-900/50 border border-cyan-800/40 transition cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Add 4th Member
+                </button>
+              )}
             </div>
 
-            <div className="space-y-2.5">
+            <div className="space-y-3">
               {members.map((member, idx) => (
                 <div key={idx} className="flex items-center gap-2">
-                  <span className="w-6 text-xs text-slate-500 font-mono text-right shrink-0">
-                    #{idx + 1}
-                  </span>
+                  <div className="w-24 shrink-0 text-left">
+                    <span className="text-xs font-mono text-slate-400">
+                      Member #{idx + 1}
+                    </span>
+                    <span className="block text-[10px] text-slate-500">
+                      {idx < 3 ? '(Compulsory)' : '(Optional)'}
+                    </span>
+                  </div>
+
                   <input
                     type="text"
-                    placeholder={`Member ${idx + 1} Full Name`}
+                    placeholder={
+                      idx < 3
+                        ? `Compulsory Member ${idx + 1} Full Name *`
+                        : 'Optional 4th Member Full Name'
+                    }
                     value={member}
                     onChange={(e) => handleMemberChange(idx, e.target.value)}
+                    required={idx < 3}
                     className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-700/80 rounded-lg text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
                   />
-                  {members.length > 1 && (
+
+                  {idx >= 3 && (
                     <button
                       type="button"
                       onClick={() => handleRemoveMember(idx)}
-                      className="p-2.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition"
-                      title="Remove member"
+                      className="p-2.5 text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 rounded-lg transition cursor-pointer"
+                      title="Remove 4th member"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -185,31 +208,6 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
             )}
           </button>
         </form>
-
-        {/* Quick test preset shortcuts */}
-        <div className="mt-8 pt-6 border-t border-slate-800/80 text-center">
-          <p className="text-xs text-slate-500 mb-3">Quick Presets for Testing:</p>
-          <div className="flex flex-wrap items-center justify-center gap-2 text-xs">
-            {[
-              { label: 'TEAM 1 (Group 1)', name: 'TEAM 1' },
-              { label: 'TEAM 2 (Group 2)', name: 'TEAM 2' },
-              { label: 'TEAM 6 (Group 3)', name: 'TEAM 6' },
-              { label: 'TEAM 14 (Group 4)', name: 'TEAM 14' },
-            ].map((preset) => (
-              <button
-                key={preset.name}
-                type="button"
-                onClick={() => {
-                  setTeamName(preset.name);
-                  setMembers(['Alice Hunter', 'Bob Vance']);
-                }}
-                className="px-2.5 py-1 rounded bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition"
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
-        </div>
       </div>
     </div>
   );

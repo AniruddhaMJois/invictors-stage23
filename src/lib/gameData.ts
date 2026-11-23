@@ -207,7 +207,10 @@ export function generateDecoyJunk(type: string, currentString: string): string {
 // Stage 3 Validation
 export interface Stage3ValidationResult {
   isValid: boolean;
+  hasMinWords: boolean;
+  wordCount: number;
   hasRoleIntro: boolean;
+  hasVaultRequest: boolean;
   hasFragmentCode: boolean;
   hasSecretWord: boolean;
   extractedRole?: string;
@@ -218,9 +221,13 @@ export interface Stage3ValidationResult {
 export function validateStage3Sentence(teamNumber: number, sentence: string): Stage3ValidationResult {
   const group = getTeamGroup(teamNumber);
   const cleanSentence = sentence.trim();
-  const lowerSentence = cleanSentence.toLowerCase();
 
-  // 1. Check for "i am " or "i'm " pattern with a role
+  // 1. Check minimum 15 words
+  const words = cleanSentence.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+  const hasMinWords = wordCount >= 15;
+
+  // 2. Check for "i am " or "i'm " pattern with a role
   // e.g., "i am commander...", "i am an engineer...", "I am agent 007..."
   const roleRegex = /\b(?:i\s*am|i['’]m)\s+([a-zA-Z0-9_\-\s]{2,30}?)(?=\s+(?:and|with|having|code|secret|my|,|\.|$))/i;
   const broadIntroRegex = /\b(?:i\s*am|i['’]m)\s+([a-zA-Z0-9_\-]+)/i;
@@ -229,34 +236,139 @@ export function validateStage3Sentence(teamNumber: number, sentence: string): St
   const hasRoleIntro = !!roleMatch;
   const extractedRole = roleMatch ? roleMatch[1].trim() : undefined;
 
-  // 2. Check fragment code (case-insensitive)
+  // 3. Check for formal vault access request
+  // e.g., "request to grant access to the vault", "grant access to the vault", "request access to vault"
+  const vaultRequestPattern = /(?:grant|request(?:ing)?|ask(?:\s+to)?|seek|petition)\s+(?:(?:me|us)\s+)?(?:to\s+grant\s+)?access\s+to\s+(?:the\s+)?vault/i;
+  const fallbackVaultPattern = /\baccess\s+to\s+(?:the\s+)?vault\b/i;
+  const hasVaultRequest = vaultRequestPattern.test(cleanSentence) || fallbackVaultPattern.test(cleanSentence);
+
+  // 4. Check fragment code (case-insensitive)
   const fragmentCodeRegex = new RegExp(`\\b${group.fragmentCode}\\b`, 'i');
   const hasFragmentCode = fragmentCodeRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.fragmentCode.toLowerCase());
 
-  // 3. Check secret word (case-insensitive)
+  // 5. Check secret word (case-insensitive)
   const secretWordRegex = new RegExp(`\\b${group.secretWord}\\b`, 'i');
   const hasSecretWord = secretWordRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.secretWord.toLowerCase());
 
   let errorMessage: string | undefined = undefined;
-  if (!hasRoleIntro) {
-    errorMessage = 'Sentence must begin or contain an "I am [role]" declaration (e.g. "I am Commander...").';
-  } else if (!hasFragmentCode && !hasSecretWord) {
-    errorMessage = `Missing your team's assigned fragment code (${group.fragmentCode}) and secret word (${group.secretWord}).`;
-  } else if (!hasFragmentCode) {
-    errorMessage = `Missing your team's assigned fragment code (${group.fragmentCode}).`;
-  } else if (!hasSecretWord) {
-    errorMessage = `Missing your team's assigned secret word (${group.secretWord}).`;
+  if (!hasMinWords) {
+    errorMessage = `Security Officer: Dispatch rejected. Statement contains only ${wordCount}/15 words. Minimum 15 words required.`;
+  } else if (!hasRoleIntro) {
+    errorMessage = 'Security Officer: Identification rejected. You must assign yourself an operational role using an "I am [role]" statement.';
+  } else if (!hasVaultRequest) {
+    errorMessage = 'Security Officer: Protocol rejected. You must formally request to grant access to the vault (e.g. "...request to grant access to the vault").';
+  } else if (!hasFragmentCode || !hasSecretWord) {
+    errorMessage = 'Security Officer: Access denied. Missing or invalid cryptographic keys from previous stages.';
   }
 
-  const isValid = hasRoleIntro && hasFragmentCode && hasSecretWord;
+  const isValid = hasMinWords && hasRoleIntro && hasVaultRequest && hasFragmentCode && hasSecretWord;
 
   return {
     isValid,
+    hasMinWords,
+    wordCount,
     hasRoleIntro,
+    hasVaultRequest,
     hasFragmentCode,
     hasSecretWord,
     extractedRole,
     errorMessage,
     assignedCodeword: group.finalCodeword,
+  };
+}
+
+// Stage 4 Flag Validation
+export interface Stage4ValidationResult {
+  isValid: boolean;
+  errorMessage?: string;
+  expectedPermutationPattern?: string;
+}
+
+export function validateStage4Flag(teamNumber: number, flagInput: string): Stage4ValidationResult {
+  const group = getTeamGroup(teamNumber);
+  const cleanInput = flagInput.trim();
+
+  const match = cleanInput.match(/^flag\{(.+)\}$/i);
+  if (!match) {
+    return {
+      isValid: false,
+      errorMessage: 'Flag format must be enclosed in flag{...} (e.g. flag{part1-part2-part3-part4}).',
+    };
+  }
+
+  const inner = match[1];
+  // Support both hyphen (-) and comma (,) as separators
+  const parts = inner.split(/[,-]/).map((s) => s.trim()).filter(Boolean);
+
+  if (parts.length !== 4) {
+    return {
+      isValid: false,
+      errorMessage: `Flag must contain exactly 4 parameters separated by hyphens or commas (received ${parts.length}).`,
+    };
+  }
+
+  // Predefined group parameters:
+  // 1: first stage answer (anything non-empty)
+  // 2.1: fragment code in stage 2
+  // 2.2: secret word in stage 2
+  // 3: word received in stage 3
+  //
+  // Group 1 (teams 1,7,5,9,3,8): flag{2.1, 3, 1, 2.2} -> [4T2, ALPHA, <anything>, AURORA]
+  // Group 2 (teams 2,10,4,11,13,18): flag{3, 1, 2.2, 2.1} -> [SIGMA, <anything>, VECTOR, 8X3]
+  // Group 3 (teams 6,12,15,17,20,21): flag{2.2, 3, 1, 2.1} -> [THUNDER, THETA, <anything>, 6C3]
+  // Group 4 (remaining): flag{1, 3, 2.2, 2.1} -> [<anything>, DELTA, ZIGZAG, 5U2]
+
+  const p0 = parts[0].toUpperCase();
+  const p1 = parts[1].toUpperCase();
+  const p2 = parts[2].toUpperCase();
+  const p3 = parts[3].toUpperCase();
+
+  let isValid = false;
+
+  switch (group.groupId) {
+    case 1: {
+      // Order: 2.1, 3, 1, 2.2
+      isValid =
+        p0 === group.fragmentCode.toUpperCase() &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        parts[2].trim().length > 0 &&
+        p3 === group.secretWord.toUpperCase();
+      break;
+    }
+    case 2: {
+      // Order: 3, 1, 2.2, 2.1
+      isValid =
+        p0 === group.finalCodeword.toUpperCase() &&
+        parts[1].trim().length > 0 &&
+        p2 === group.secretWord.toUpperCase() &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+    case 3: {
+      // Order: 2.2, 3, 1, 2.1
+      isValid =
+        p0 === group.secretWord.toUpperCase() &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        parts[2].trim().length > 0 &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+    case 4:
+    default: {
+      // Order: 1, 3, 2.2, 2.1
+      isValid =
+        parts[0].trim().length > 0 &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        p2 === group.secretWord.toUpperCase() &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+  }
+
+  return {
+    isValid,
+    errorMessage: isValid
+      ? undefined
+      : 'Invalid flag. Check the parameters and test different permutations until you find the correct sequence!',
   };
 }

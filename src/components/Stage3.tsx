@@ -5,36 +5,36 @@ import confetti from 'canvas-confetti';
 import { validateStage3Sentence, getTeamGroup } from '@/lib/gameData';
 import { recordStage3Completion, logActivity, TeamRecord } from '@/lib/supabase';
 import {
-  ShieldAlert,
   Send,
   Trophy,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Sparkles,
   Lock,
   Compass,
   FileCheck2,
-  HelpCircle,
+  ShieldAlert,
+  ArrowRight,
 } from 'lucide-react';
 
 interface Props {
   team: TeamRecord;
   onGoToStage2: () => void;
+  onProceedToStage4: () => void;
 }
 
-export default function Stage3({ team, onGoToStage2 }: Props) {
+export default function Stage3({ team, onGoToStage2, onProceedToStage4 }: Props) {
   const group = getTeamGroup(team.team_number);
 
   const [sentenceInput, setSentenceInput] = useState(team.stage3_submission || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [solved, setSolved] = useState(team.stage3_solved || false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [assignedCodeword, setAssignedCodeword] = useState<string>(
     team.assigned_final_codeword || group.finalCodeword
   );
-
-  // Real-time requirement detection for smooth user experience
-  const validationPreview = validateStage3Sentence(team.team_number, sentenceInput);
 
   useEffect(() => {
     if (team.stage3_solved) {
@@ -54,7 +54,7 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     }
 
     if (!sentenceInput.trim()) {
-      setErrorMessage('Please enter the secret sentence.');
+      setErrorMessage('Security Officer: Clearance statement cannot be empty.');
       return;
     }
 
@@ -64,15 +64,12 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     await logActivity(team.team_name, team.team_number, 3, 'STAGE3_ATTEMPT', {
       input: sentenceInput,
       isValid: result.isValid,
-      missingRole: !result.hasRoleIntro,
-      missingFragment: !result.hasFragmentCode,
-      missingSecretWord: !result.hasSecretWord,
     });
 
     if (!result.isValid) {
       setErrorMessage(
         result.errorMessage ||
-          'Validation failed. Ensure your sentence includes "I am [role]", your assigned Fragment Code, and Secret Word.'
+          'Security Officer: Clearance rejected. Statement does not meet vault access requirements.'
       );
       setIsSubmitting(false);
       return;
@@ -81,6 +78,7 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     // Solved!
     setSolved(true);
     setAssignedCodeword(result.assignedCodeword);
+    setShowSuccessModal(true);
     setIsSubmitting(false);
 
     // Trigger celebration confetti
@@ -124,6 +122,8 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     );
   }
 
+  const wordCount = sentenceInput.trim().split(/\s+/).filter(Boolean).length;
+
   return (
     <div className="max-w-3xl mx-auto w-full px-4 py-6">
       {/* Header */}
@@ -132,121 +132,73 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/30">
-                Stage 3: Secret Sentence Authentication
+                Stage 3: Security Officer Checkpoint
               </span>
               <span className="text-xs text-slate-400">Team #{team.team_number}</span>
             </div>
-            <h2 className="text-2xl font-black text-white">Transmission Verification</h2>
+            <h2 className="text-2xl font-black text-white">Vault Access Authorization</h2>
           </div>
 
           {solved ? (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/50 text-emerald-400 text-xs font-bold">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/50 text-emerald-400 text-xs font-bold self-start sm:self-auto">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Verified &amp; Solved</span>
+              <span>Access Granted</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-purple-300 text-xs font-semibold">
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-purple-300 text-xs font-semibold self-start sm:self-auto">
               <FileCheck2 className="w-4 h-4" />
-              <span>Awaiting Authentication</span>
+              <span>Checkpoint Active</span>
             </div>
           )}
         </div>
 
-        {/* Requirements Box */}
-        <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 mb-6 text-xs text-slate-300 space-y-2">
-          <div className="font-semibold text-slate-200 flex items-center gap-2">
-            <HelpCircle className="w-4 h-4 text-cyan-400" />
-            <span>Sentence Verification Instructions:</span>
+        {/* SECURITY OFFICER TRANSMISSION PROMPT */}
+        <div className="p-4 sm:p-5 rounded-xl bg-slate-950 border border-purple-500/30 text-slate-200 text-xs sm:text-sm leading-relaxed mb-6 font-mono shadow-inner">
+          <div className="text-purple-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>Security Officer Prompt:</span>
           </div>
-          <p className="text-slate-400 text-xs">
-            Formulate a secret sentence containing an <span className="text-cyan-300 font-mono font-semibold">&quot;I am [role]&quot;</span> declaration, combined with your decrypted <span className="text-cyan-300 font-mono font-semibold">Fragment Code</span> and <span className="text-purple-300 font-mono font-semibold">Secret Word</span> obtained from Stage 2.
+          <p className="text-slate-300 leading-relaxed mb-3">
+            &ldquo;Halt! Identify yourself to checkpoint control. To breach this vault, you must submit a formal clearance dispatch: assign yourself your operational role using an <span className="text-cyan-300 font-bold">&quot;I am [role]&quot;</span> declaration, furnish the cryptographic keys recovered from previous stages, and formally <span className="text-purple-300 font-bold">request to grant access to the vault</span>.&rdquo;
           </p>
-          <div className="pt-2 border-t border-slate-800/80 flex flex-wrap gap-4 text-[11px] text-slate-400">
-            <span>
-              Expected Fragment Code: <strong className="text-cyan-400 font-mono">{group.fragmentCode}</strong>
-            </span>
-            <span>
-              Expected Secret Word: <strong className="text-purple-400 font-mono">{group.secretWord}</strong>
-            </span>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-400 pt-3 border-t border-slate-800/80">
+            <span className="flex items-center gap-1">• Minimum 15 words</span>
+            <span className="flex items-center gap-1">• Assign yourself a role (&quot;I am [role]&quot;)</span>
+            <span className="flex items-center gap-1">• Keys recovered from previous stages</span>
+            <span className="flex items-center gap-1">• Request to grant access to the vault</span>
           </div>
         </div>
 
-        {/* Form */}
+        {/* Dispatch Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-slate-200 mb-2">
-              Enter Secret Sentence
+              Dispatch Statement to Security Officer
             </label>
             <div className="relative">
               <textarea
-                rows={3}
-                placeholder={`e.g. I am the lead cryptanalyst operating with fragment ${group.fragmentCode} and passkey ${group.secretWord}`}
+                rows={4}
+                placeholder="e.g. I am [operational role] holding keys [...] and I officially request to grant access to the vault..."
                 value={sentenceInput}
                 onChange={(e) => setSentenceInput(e.target.value)}
                 disabled={solved}
-                className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-mono leading-relaxed disabled:opacity-75"
+                className="w-full px-4 py-3.5 bg-slate-950 border border-slate-700 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-purple-500 text-sm font-mono leading-relaxed disabled:opacity-75"
                 required
               />
             </div>
-          </div>
-
-          {/* Live Validation Checklist (helps teams see what is recognized) */}
-          {!solved && sentenceInput.trim().length > 0 && (
-            <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80 space-y-2 text-xs">
-              <div className="text-slate-400 font-medium text-[11px] uppercase tracking-wider">
-                Live Syntactic Analysis:
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <div
-                  className={`flex items-center gap-2 p-2 rounded-lg border ${
-                    validationPreview.hasRoleIntro
-                      ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-500'
-                  }`}
-                >
-                  <CheckCircle2
-                    className={`w-3.5 h-3.5 ${
-                      validationPreview.hasRoleIntro ? 'text-emerald-400' : 'text-slate-600'
-                    }`}
-                  />
-                  <span>
-                    &quot;I am [role]&quot;{' '}
-                    {validationPreview.extractedRole ? `(${validationPreview.extractedRole})` : ''}
-                  </span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 p-2 rounded-lg border ${
-                    validationPreview.hasFragmentCode
-                      ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-500'
-                  }`}
-                >
-                  <CheckCircle2
-                    className={`w-3.5 h-3.5 ${
-                      validationPreview.hasFragmentCode ? 'text-emerald-400' : 'text-slate-600'
-                    }`}
-                  />
-                  <span>Fragment: {group.fragmentCode}</span>
-                </div>
-
-                <div
-                  className={`flex items-center gap-2 p-2 rounded-lg border ${
-                    validationPreview.hasSecretWord
-                      ? 'bg-emerald-950/30 border-emerald-800/60 text-emerald-300'
-                      : 'bg-slate-900 border-slate-800 text-slate-500'
-                  }`}
-                >
-                  <CheckCircle2
-                    className={`w-3.5 h-3.5 ${
-                      validationPreview.hasSecretWord ? 'text-emerald-400' : 'text-slate-600'
-                    }`}
-                  />
-                  <span>Word: {group.secretWord}</span>
-                </div>
-              </div>
+            <div className="flex items-center justify-between mt-1.5 text-xs">
+              <span className="text-slate-400">
+                Protocol: Minimum 15 words required
+              </span>
+              <span
+                className={`font-mono font-semibold ${
+                  wordCount >= 15 ? 'text-emerald-400' : 'text-amber-400'
+                }`}
+              >
+                {wordCount} / 15 words
+              </span>
             </div>
-          )}
+          </div>
 
           {errorMessage && (
             <div className="p-3.5 rounded-xl bg-rose-950/50 border border-rose-800/80 flex items-start gap-3 text-xs sm:text-sm text-rose-300">
@@ -255,7 +207,7 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
             </div>
           )}
 
-          {!solved && (
+          {!solved ? (
             <button
               type="submit"
               disabled={isSubmitting}
@@ -264,19 +216,29 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
               {isSubmitting ? (
                 <span className="inline-flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Verifying with Supabase...
+                  Security Officer Verifying...
                 </span>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>Verify Secret Sentence</span>
+                  <span>Submit Clearance to Security Officer</span>
                 </>
               )}
             </button>
+          ) : (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(true)}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase tracking-wider transition shadow cursor-pointer"
+              >
+                View Codeword Popup
+              </button>
+            </div>
           )}
         </form>
 
-        {/* VICTORY CARD: REVEALS ASSIGNED WORD (ALPHA, SIGMA, THETA, DELTA) */}
+        {/* VICTORY CARD DISPLAY (PERSISTENT SUMMARY) */}
         {solved && (
           <div className="mt-8 pt-6 border-t border-slate-800">
             <div className="p-6 sm:p-8 rounded-2xl bg-gradient-to-br from-purple-950/70 via-slate-900 to-slate-950 border-2 border-purple-500/80 text-center shadow-2xl shadow-purple-500/20">
@@ -285,14 +247,14 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
               </div>
 
               <div className="inline-block px-3 py-1 rounded-full bg-purple-900/80 border border-purple-400/60 text-purple-200 text-xs font-black uppercase tracking-widest mb-3">
-                AUTHENTICATION GRANTED
+                VAULT ACCESS GRANTED
               </div>
 
               <h3 className="text-2xl sm:text-3xl font-black text-white mb-2">
                 Congratulations, {team.team_name}!
               </h3>
               <p className="text-slate-300 text-xs sm:text-sm max-w-md mx-auto mb-6">
-                Your secret sentence has been validated and recorded. Here is your team&apos;s official assigned codeword:
+                Your dispatch statement has been authenticated by the Security Officer. Here is your team&apos;s official assigned codeword:
               </p>
 
               {/* Big Codeword Display */}
@@ -328,6 +290,72 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
           </div>
         )}
       </div>
+
+      {/* STAGE 3 SUCCESS POP-UP MODAL BOX WITH PROMINENT NOTICE */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-purple-500/80 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl shadow-purple-500/20 text-center relative">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-500/20 border border-purple-400/50 text-purple-300 mb-4 shadow-lg shadow-purple-500/30">
+              <Trophy className="w-8 h-8 animate-bounce" />
+            </div>
+
+            <div className="inline-block px-3 py-1 rounded-full bg-purple-900/80 border border-purple-400/60 text-purple-200 text-xs font-black uppercase tracking-widest mb-3">
+              VAULT ACCESS GRANTED!
+            </div>
+
+            <h3 className="text-2xl font-black text-white mb-2">
+              Clearance Verified by Security Officer
+            </h3>
+
+            {/* MANDATORY WARNING/NOTE POPUP BANNER */}
+            <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs sm:text-sm font-semibold flex items-center gap-2.5 text-left mb-5">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>
+                Please keep note of the answers in the stages for future reference!
+              </span>
+            </div>
+
+            {/* Big Assigned Codeword */}
+            <div className="p-5 rounded-2xl bg-black/60 border-2 border-purple-400 text-4xl sm:text-5xl font-black tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-purple-300 via-pink-300 to-cyan-300 shadow-xl mb-5">
+              {assignedCodeword}
+            </div>
+
+            {/* Breakdown of Team Artifacts */}
+            <div className="grid grid-cols-2 gap-3 mb-6 text-left text-xs font-mono">
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                <span className="text-slate-400 block text-[10px] uppercase">Fragment Code</span>
+                <span className="text-cyan-400 font-bold text-sm">{group.fragmentCode}</span>
+              </div>
+              <div className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                <span className="text-slate-400 block text-[10px] uppercase">Secret Word</span>
+                <span className="text-purple-400 font-bold text-sm">{group.secretWord}</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+              >
+                Close Box
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  onProceedToStage4();
+                }}
+                className="flex-1 py-3 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm tracking-wide shadow-lg shadow-purple-500/25 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>ENTER STAGE 4</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

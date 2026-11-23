@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import TeamRegistration from '@/components/TeamRegistration';
 import Stage2 from '@/components/Stage2';
 import Stage3 from '@/components/Stage3';
+import Stage4 from '@/components/Stage4';
 import { isSupabaseConfigured, TeamRecord } from '@/lib/supabase';
 import {
   Shield,
@@ -15,14 +16,14 @@ import {
   CheckCircle2,
   LogOut,
   HelpCircle,
-  ExternalLink,
+  Flag,
 } from 'lucide-react';
 
 const ACTIVE_TEAM_STORAGE_KEY = 'cipher_quest_active_team';
 
 export default function Home() {
   const [activeTeam, setActiveTeam] = useState<TeamRecord | null>(null);
-  const [activeStage, setActiveStage] = useState<2 | 3>(2);
+  const [activeStage, setActiveStage] = useState<2 | 3 | 4>(2);
   const [isClient, setIsClient] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
@@ -34,7 +35,9 @@ export default function Home() {
       if (saved) {
         const parsed = JSON.parse(saved);
         setActiveTeam(parsed);
-        if (parsed.stage2_solved && !parsed.stage3_solved) {
+        if (parsed.stage3_solved && !parsed.stage4_solved) {
+          setActiveStage(4);
+        } else if (parsed.stage2_solved && !parsed.stage3_solved) {
           setActiveStage(3);
         }
       }
@@ -50,7 +53,13 @@ export default function Home() {
     } catch {
       // ignore
     }
-    setActiveStage(team.stage2_solved ? 3 : 2);
+    if (team.stage3_solved) {
+      setActiveStage(4);
+    } else if (team.stage2_solved) {
+      setActiveStage(3);
+    } else {
+      setActiveStage(2);
+    }
   };
 
   const handleLogout = () => {
@@ -80,6 +89,23 @@ export default function Home() {
     setActiveStage(3);
   };
 
+  const handleStage3Solved = () => {
+    if (activeTeam) {
+      const updated = {
+        ...activeTeam,
+        stage3_solved: true,
+        current_stage: 4,
+      };
+      setActiveTeam(updated);
+      try {
+        localStorage.setItem(ACTIVE_TEAM_STORAGE_KEY, JSON.stringify(updated));
+      } catch {
+        // ignore
+      }
+    }
+    setActiveStage(4);
+  };
+
   if (!isClient) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-500 font-mono text-sm">
@@ -94,7 +120,7 @@ export default function Home() {
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute -top-40 -left-40 w-96 h-96 bg-cyan-600/10 rounded-full blur-3xl" />
         <div className="absolute top-1/2 -right-40 w-96 h-96 bg-purple-600/10 rounded-full blur-3xl" />
-        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 left-1/3 w-96 h-96 bg-rose-600/10 rounded-full blur-3xl" />
       </div>
 
       {/* Top Navbar */}
@@ -110,7 +136,7 @@ export default function Home() {
                 CIPHER QUEST
               </span>
               <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
-                STAGES 2 &amp; 3
+                STAGES 2, 3 &amp; 4
               </span>
             </div>
           </div>
@@ -178,22 +204,22 @@ export default function Home() {
                   </p>
                 </div>
 
-                {/* STAGE SELECTOR TABS (STAGE 2 and STAGE 3) */}
-                <div className="flex items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800 self-start sm:self-auto">
+                {/* STAGE SELECTOR TABS (STAGE 2, STAGE 3, and STAGE 4) */}
+                <div className="flex flex-wrap items-center bg-slate-950 p-1.5 rounded-xl border border-slate-800 gap-1 self-start sm:self-auto">
                   {/* Stage 2 Button */}
                   <button
                     type="button"
                     onClick={() => setActiveStage(2)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
                       activeStage === 2
                         ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <KeyRound className="w-4 h-4" />
+                    <KeyRound className="w-3.5 h-3.5" />
                     <span>STAGE 2</span>
                     {activeTeam.stage2_solved && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-950" />
+                      <CheckCircle2 className="w-3 h-3 text-emerald-950" />
                     )}
                   </button>
 
@@ -201,20 +227,41 @@ export default function Home() {
                   <button
                     type="button"
                     onClick={() => setActiveStage(3)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
                       activeStage === 3
                         ? 'bg-purple-600 text-white shadow-md shadow-purple-500/20'
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     {activeTeam.stage2_solved ? (
-                      <Unlock className="w-4 h-4 text-emerald-400" />
+                      <Unlock className="w-3.5 h-3.5 text-emerald-400" />
                     ) : (
-                      <Lock className="w-4 h-4 text-slate-500" />
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
                     )}
                     <span>STAGE 3</span>
                     {activeTeam.stage3_solved && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    )}
+                  </button>
+
+                  {/* Stage 4 Button */}
+                  <button
+                    type="button"
+                    onClick={() => setActiveStage(4)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-lg font-bold text-xs uppercase tracking-wider transition cursor-pointer ${
+                      activeStage === 4
+                        ? 'bg-rose-600 text-white shadow-md shadow-rose-500/20'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {activeTeam.stage3_solved ? (
+                      <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Lock className="w-3.5 h-3.5 text-slate-500" />
+                    )}
+                    <span>STAGE 4</span>
+                    {activeTeam.stage4_solved && (
+                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
                     )}
                   </button>
                 </div>
@@ -224,8 +271,14 @@ export default function Home() {
             {/* Render Active Stage */}
             {activeStage === 2 ? (
               <Stage2 team={activeTeam} onProceedToStage3={handleStage2Solved} />
+            ) : activeStage === 3 ? (
+              <Stage3
+                team={activeTeam}
+                onGoToStage2={() => setActiveStage(2)}
+                onProceedToStage4={handleStage3Solved}
+              />
             ) : (
-              <Stage3 team={activeTeam} onGoToStage2={() => setActiveStage(2)} />
+              <Stage4 team={activeTeam} onGoToStage3={() => setActiveStage(3)} />
             )}
           </div>
         )}
@@ -260,28 +313,19 @@ export default function Home() {
 
             <ol className="list-decimal list-inside space-y-2.5 text-xs text-slate-300 font-mono mb-6 bg-slate-950 p-4 rounded-xl border border-slate-800">
               <li>
-                In Supabase, go to <strong>SQL Editor</strong> and run the contents of{' '}
-                <span className="text-cyan-400">supabase.sql</span> (already created in project root).
+                In Supabase, run the contents of <span className="text-cyan-400">supabase.sql</span> in SQL Editor.
               </li>
               <li>
-                Copy your <strong>Project URL</strong> and <strong>Anon Key</strong> from Project
-                Settings &gt; API.
+                All teams automatically get dedicated activity log tables (`team_&lt;number&gt;_logs`).
               </li>
-              <li>
-                Put them into <span className="text-cyan-400">.env.local</span>:
-                <pre className="mt-1 p-2 rounded bg-black/60 text-[11px] text-cyan-300 overflow-x-auto">
-{`NEXT_PUBLIC_SUPABASE_URL=https://xyzcompany.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...`}
-                </pre>
-              </li>
-              <li>Restart or reload the app. All actions sync automatically!</li>
+              <li>All stages (Stage 2, Stage 3, and Stage 4) sync in real time!</li>
             </ol>
 
             <div className="flex justify-end gap-3">
               <button
                 type="button"
                 onClick={() => setShowConfigModal(false)}
-                className="py-2.5 px-5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition"
+                className="py-2.5 px-5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs transition cursor-pointer"
               >
                 Close
               </button>

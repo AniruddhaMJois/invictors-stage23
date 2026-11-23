@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import confetti from 'canvas-confetti';
 import {
   generateInitialStage2Code,
@@ -12,17 +12,14 @@ import {
 import { logActivity, recordStage2Completion, TeamRecord } from '@/lib/supabase';
 import {
   Terminal,
-  KeyRound,
   RotateCcw,
+  Undo2,
   Sparkles,
   CheckCircle,
   AlertTriangle,
   ArrowRight,
   Copy,
   Check,
-  ShieldCheck,
-  Layers,
-  HelpCircle,
 } from 'lucide-react';
 
 interface Props {
@@ -30,33 +27,44 @@ interface Props {
   onProceedToStage3: () => void;
 }
 
-type Stage2Step = 'base64' | 'hex' | 'rot13' | 'solved' | 'glitched';
+interface CipherButton {
+  id: string;
+  name: string;
+}
 
 export default function Stage2({ team, onProceedToStage3 }: Props) {
-  // Pre-generate cipher stages for this team
-  const cipherStages = React.useMemo(
+  const cipherStages = useMemo(
     () => generateInitialStage2Code(team.team_number),
     [team.team_number]
   );
 
   const [currentBuffer, setCurrentBuffer] = useState<string>(cipherStages.base64String);
-  const [currentStep, setCurrentStep] = useState<Stage2Step>('base64');
-  const [glitchMessage, setGlitchMessage] = useState<string | null>(null);
+  const [history, setHistory] = useState<string[]>([cipherStages.base64String]);
   const [copied, setCopied] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [actionHistory, setActionHistory] = useState<string[]>([]);
+  const [isSolved, setIsSolved] = useState(team.stage2_solved || false);
 
   // If already solved in database
   useEffect(() => {
     if (team.stage2_solved) {
       setCurrentBuffer(cipherStages.originalString);
-      setCurrentStep('solved');
+      setIsSolved(true);
     }
   }, [team.stage2_solved, cipherStages.originalString]);
 
-  const addHistory = (msg: string) => {
-    setActionHistory((prev) => [msg, ...prev.slice(0, 9)]);
-  };
+  // Shuffled cipher buttons list (not clustered together, all uniform size)
+  const buttons: CipherButton[] = useMemo(() => {
+    return [
+      { id: 'rot5', name: 'ROT5' },
+      { id: 'hex', name: 'HEXADECIMAL' },
+      { id: 'binary', name: 'BINARY' },
+      { id: 'base64', name: 'BASE64' },
+      { id: 'atbash', name: 'ATBASH' },
+      { id: 'rot13', name: 'ROT13' },
+      { id: 'octal', name: 'OCTAL' },
+      { id: 'caesar7', name: 'CAESAR-7' },
+    ];
+  }, []);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(currentBuffer);
@@ -64,290 +72,124 @@ export default function Stage2({ team, onProceedToStage3 }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Base64 button clicked
-  const handleBase64Click = async () => {
-    await logActivity(team.team_name, team.team_number, 2, 'DECODE_BUTTON_CLICKED', {
-      button: 'Base64',
-      currentStep,
-    });
-
-    if (currentStep === 'base64') {
-      const decodedHex = base64ToString(currentBuffer);
-      setCurrentBuffer(decodedHex);
-      setCurrentStep('hex');
-      setGlitchMessage(null);
-      addHistory('✓ Base64 decoded successfully -> Unlocked Hexadecimal layer.');
-    } else if (currentStep === 'solved') {
-      setGlitchMessage('Payload already fully decrypted!');
-    } else {
-      // Hierarchy mismatch
-      const junk = generateDecoyJunk('corrupt', currentBuffer);
-      setCurrentBuffer(junk);
-      setCurrentStep('glitched');
-      setGlitchMessage('Hierarchy Mismatch: Buffer is not in Base64 encoding. Corrupted stream!');
-      addHistory('✕ Base64 decode failed: invalid state.');
+  // Undo button: restore previous buffer from history
+  const handleUndo = () => {
+    if (history.length > 1) {
+      const newHistory = [...history];
+      newHistory.pop(); // remove current
+      const previousState = newHistory[newHistory.length - 1];
+      setHistory(newHistory);
+      setCurrentBuffer(previousState);
     }
   };
 
-  // Hex button clicked
-  const handleHexClick = async () => {
-    await logActivity(team.team_name, team.team_number, 2, 'DECODE_BUTTON_CLICKED', {
-      button: 'Hex',
-      currentStep,
-    });
-
-    if (currentStep === 'hex') {
-      const decodedRot13 = hexToString(currentBuffer);
-      setCurrentBuffer(decodedRot13);
-      setCurrentStep('rot13');
-      setGlitchMessage(null);
-      addHistory('✓ Hexadecimal decoded successfully -> Unlocked ROT13 layer.');
-    } else if (currentStep === 'base64') {
-      const junk = generateDecoyJunk('corrupt', currentBuffer);
-      setCurrentBuffer(junk);
-      setCurrentStep('glitched');
-      setGlitchMessage('Sequence Error: Hierarchy requires Base64 first before Hexadecimal can be read!');
-      addHistory('✕ Hex decode failed: Base64 layer still present.');
-    } else if (currentStep === 'solved') {
-      setGlitchMessage('Payload already fully decrypted!');
-    } else {
-      const junk = generateDecoyJunk('corrupt', currentBuffer);
-      setCurrentBuffer(junk);
-      setCurrentStep('glitched');
-      setGlitchMessage('Hexadecimal parsing failed on current byte structure.');
-      addHistory('✕ Hex decode failed.');
-    }
+  // Reset button: restore initial Base64 buffer
+  const handleReset = () => {
+    setCurrentBuffer(cipherStages.base64String);
+    setHistory([cipherStages.base64String]);
   };
 
-  // ROT13 button clicked
-  const handleRot13Click = async () => {
-    await logActivity(team.team_name, team.team_number, 2, 'DECODE_BUTTON_CLICKED', {
-      button: 'ROT13',
-      currentStep,
-    });
+  // Generic cipher button click handler (only logs when final answer is generated)
+  const handleCipherButtonClick = async (btnId: string) => {
+    if (isSolved) {
+      setShowSuccessModal(true);
+      return;
+    }
 
-    if (currentStep === 'rot13') {
-      // Final decrypt!
-      const original = rot13(currentBuffer);
-      setCurrentBuffer(original);
-      setCurrentStep('solved');
-      setGlitchMessage(null);
-      addHistory('★ ROT13 decrypted! Original Access String revealed!');
+    let nextBuffer = '';
+
+    // Logic:
+    // Base64 is valid only if currentBuffer === cipherStages.base64String
+    // Hex is valid only if currentBuffer === cipherStages.hexString
+    // ROT13 is valid only if currentBuffer === cipherStages.rot13String
+    // All other cases produce pure junk characters (no hints/prompts)
+
+    if (btnId === 'base64' && currentBuffer === cipherStages.base64String) {
+      nextBuffer = cipherStages.hexString;
+    } else if (btnId === 'hex' && currentBuffer === cipherStages.hexString) {
+      nextBuffer = cipherStages.rot13String;
+    } else if (btnId === 'rot13' && currentBuffer === cipherStages.rot13String) {
+      nextBuffer = cipherStages.originalString;
+      setIsSolved(true);
 
       // Trigger Confetti
       confetti({
-        particleCount: 100,
-        spread: 70,
+        particleCount: 120,
+        spread: 80,
         origin: { y: 0.6 },
       });
 
-      // Sync completion to Supabase
-      await recordStage2Completion(team.team_name, team.team_number, original);
-      setShowSuccessModal(true);
-    } else if (currentStep === 'base64' || currentStep === 'hex') {
-      const junk = generateDecoyJunk('corrupt', currentBuffer);
-      setCurrentBuffer(junk);
-      setCurrentStep('glitched');
-      setGlitchMessage(
-        `Hierarchy Error: You cannot apply ROT13 yet! Follow the sequence: Base64 → Hex → ROT13.`
-      );
-      addHistory('✕ ROT13 failed: hierarchy out of order.');
-    } else if (currentStep === 'solved') {
+      await recordStage2Completion(team.team_name, team.team_number, cipherStages.originalString);
       setShowSuccessModal(true);
     } else {
-      const junk = generateDecoyJunk('corrupt', currentBuffer);
-      setCurrentBuffer(junk);
-      setCurrentStep('glitched');
-      setGlitchMessage('Corrupted buffer: cannot apply ROT13 to noise.');
+      // Incompatible / out-of-order / decoy: generate corrupted junk output without prompting
+      nextBuffer = generateDecoyJunk(btnId, currentBuffer);
     }
-  };
 
-  // Decoy buttons (ROT5, Octal, Binary, Atbash, Caesar-7)
-  const handleDecoyClick = async (type: string) => {
-    await logActivity(team.team_name, team.team_number, 2, 'DECOY_BUTTON_CLICKED', {
-      decoyType: type,
-      currentStep,
-    });
-
-    const junk = generateDecoyJunk(type, currentBuffer);
-    setCurrentBuffer(junk);
-    setCurrentStep('glitched');
-    setGlitchMessage(
-      `JUNK OUTPUT GENERATED: The [${type.toUpperCase()}] algorithm is incompatible with this cipher format! Corrupting transmission...`
-    );
-    addHistory(`✕ Incompatible cipher: [${type.toUpperCase()}] produced noise.`);
-  };
-
-  // Reset back to initial Base64 code
-  const handleReset = async () => {
-    await logActivity(team.team_name, team.team_number, 2, 'RESET_BUFFER_CLICKED', {});
-    setCurrentBuffer(cipherStages.base64String);
-    setCurrentStep('base64');
-    setGlitchMessage(null);
-    addHistory('↺ Decryption terminal reset to initial Base64 payload.');
+    setCurrentBuffer(nextBuffer);
+    setHistory((prev) => [...prev, nextBuffer]);
   };
 
   return (
     <div className="max-w-4xl mx-auto w-full px-4 py-6">
-      {/* Stage Header & Sequence Info */}
+      {/* Stage Header */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 mb-6 shadow-xl backdrop-blur-xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                Stage 2: Cryptographic Sequence
+                Stage 2
               </span>
               <span className="text-xs text-slate-400">Team #{team.team_number}</span>
             </div>
-            <h2 className="text-2xl font-extrabold text-white">Multi-Layer Cipher Decryption</h2>
+            <h2 className="text-2xl font-extrabold text-white">Cipher Decryption Terminal</h2>
           </div>
 
-          {currentStep === 'solved' ? (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/50 text-emerald-400 text-xs font-semibold">
+          {isSolved && (
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/50 text-emerald-400 text-xs font-semibold self-start sm:self-auto">
               <CheckCircle className="w-4 h-4" />
               <span>Decryption Complete</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-950/60 border border-amber-500/40 text-amber-300 text-xs font-semibold">
-              <KeyRound className="w-4 h-4" />
-              <span>Cipher Active</span>
             </div>
           )}
         </div>
 
-        {/* Hierarchy Progress Breadcrumb */}
-        <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 mb-4">
-          <div className="flex items-center justify-between text-xs font-medium text-slate-400 mb-2">
-            <span className="flex items-center gap-1.5 text-cyan-400">
-              <Layers className="w-4 h-4" />
-              Decryption Hierarchy:
-            </span>
-            <span className="text-slate-400 text-[11px]">
-              Order: Base64 → Hexadecimal → ROT13
-            </span>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            {/* Step 1: Base64 */}
-            <div
-              className={`p-2.5 rounded-lg border text-center transition-all ${
-                currentStep === 'base64'
-                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 ring-2 ring-cyan-500/20 font-bold'
-                  : currentStep === 'hex' || currentStep === 'rot13' || currentStep === 'solved'
-                  ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300'
-                  : 'bg-slate-900 border-slate-800 text-slate-500'
-              }`}
-            >
-              <div className="text-[10px] uppercase tracking-wider opacity-75">Step 1</div>
-              <div className="text-sm font-mono flex items-center justify-center gap-1">
-                Base64
-                {(currentStep === 'hex' || currentStep === 'rot13' || currentStep === 'solved') && (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                )}
-              </div>
-            </div>
-
-            {/* Step 2: Hex */}
-            <div
-              className={`p-2.5 rounded-lg border text-center transition-all ${
-                currentStep === 'hex'
-                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 ring-2 ring-cyan-500/20 font-bold'
-                  : currentStep === 'rot13' || currentStep === 'solved'
-                  ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300'
-                  : 'bg-slate-900 border-slate-800 text-slate-500'
-              }`}
-            >
-              <div className="text-[10px] uppercase tracking-wider opacity-75">Step 2</div>
-              <div className="text-sm font-mono flex items-center justify-center gap-1">
-                Hexadecimal
-                {(currentStep === 'rot13' || currentStep === 'solved') && (
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                )}
-              </div>
-            </div>
-
-            {/* Step 3: ROT13 */}
-            <div
-              className={`p-2.5 rounded-lg border text-center transition-all ${
-                currentStep === 'rot13'
-                  ? 'bg-cyan-500/20 border-cyan-400 text-cyan-300 ring-2 ring-cyan-500/20 font-bold'
-                  : currentStep === 'solved'
-                  ? 'bg-emerald-950/40 border-emerald-700/60 text-emerald-300 font-bold'
-                  : 'bg-slate-900 border-slate-800 text-slate-500'
-              }`}
-            >
-              <div className="text-[10px] uppercase tracking-wider opacity-75">Step 3</div>
-              <div className="text-sm font-mono flex items-center justify-center gap-1">
-                ROT13
-                {currentStep === 'solved' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Glitch / Warning Alert */}
-        {glitchMessage && (
-          <div className="mb-4 p-3.5 rounded-xl bg-amber-950/50 border border-amber-800/80 flex items-start gap-3 text-xs sm:text-sm text-amber-200 animate-pulse">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <span className="font-semibold block">{glitchMessage}</span>
-              <span className="text-[11px] text-amber-400/80">
-                Click &quot;Reset Buffer&quot; below to restore your clean ciphertext transmission.
-              </span>
-            </div>
-          </div>
-        )}
-
-        {/* Cipher Transmission Buffer Screen */}
-        <div className="relative rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-sm shadow-inner mb-6">
+        {/* Buffer Display */}
+        <div className="relative rounded-xl border border-slate-800 bg-slate-950 p-4 font-mono text-sm shadow-inner mb-4">
           <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-800/80 text-xs text-slate-400">
             <div className="flex items-center gap-2">
               <Terminal className="w-4 h-4 text-cyan-400" />
-              <span>TERMINAL BUFFER // {currentStep.toUpperCase()}</span>
+              <span>PAYLOAD BUFFER</span>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleCopy}
-                className="hover:text-cyan-400 transition flex items-center gap-1 text-[11px]"
-              >
-                {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copied ? 'Copied' : 'Copy'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={handleReset}
-                className="hover:text-rose-400 transition flex items-center gap-1 text-[11px]"
-                title="Reset back to Base64 payload"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Reset Buffer</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="hover:text-cyan-400 transition flex items-center gap-1 text-xs"
+            >
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              <span>{copied ? 'Copied' : 'Copy'}</span>
+            </button>
           </div>
 
           <div
-            className={`break-all leading-relaxed p-3 rounded-lg bg-black/40 border border-slate-800/60 font-mono text-sm sm:text-base select-all ${
-              currentStep === 'solved'
+            className={`break-all leading-relaxed p-4 rounded-lg bg-black/50 border border-slate-800/60 font-mono text-sm sm:text-base select-all min-h-[90px] flex items-center ${
+              isSolved
                 ? 'text-emerald-300 font-bold bg-emerald-950/20 border-emerald-800/50'
-                : currentStep === 'glitched'
-                ? 'text-rose-400 font-mono tracking-widest'
                 : 'text-cyan-300'
             }`}
           >
             {currentBuffer}
           </div>
 
-          {currentStep === 'solved' && (
+          {isSolved && (
             <div className="mt-3 p-3 rounded-lg bg-emerald-950/40 border border-emerald-800 flex items-center justify-between">
               <span className="text-xs text-emerald-300 font-semibold flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-400" />
-                Original string unlocked successfully!
+                Original string unlocked!
               </span>
               <button
                 type="button"
                 onClick={() => setShowSuccessModal(true)}
-                className="text-xs px-3 py-1 rounded bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition shadow"
+                className="text-xs px-3.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold transition shadow cursor-pointer"
               >
                 View Popup & Proceed
               </button>
@@ -355,105 +197,56 @@ export default function Stage2({ team, onProceedToStage3 }: Props) {
           )}
         </div>
 
-        {/* Decoder Controls: Primary Hierarchy Buttons */}
-        <div className="mb-6">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-300 mb-3 flex items-center gap-2">
-            <KeyRound className="w-4 h-4 text-cyan-400" />
-            <span>Decryption Pipeline (Follow Correct Hierarchy)</span>
-          </div>
+        {/* PROMINENT CONTROL ACTIONS: UNDO & RESET BUFFER */}
+        <div className="flex flex-wrap items-center gap-3 mb-6 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-auto">
+            Buffer Controls:
+          </span>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <button
-              type="button"
-              onClick={handleBase64Click}
-              className={`p-3.5 rounded-xl border text-center font-bold tracking-wide transition shadow-lg flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                currentStep === 'base64'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-cyan-500/25 ring-2 ring-cyan-400 scale-[1.02]'
-                  : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-              }`}
-            >
-              <span className="text-base">1. BASE64</span>
-              <span className="text-[10px] font-normal opacity-80">Decodes Base64 → Hex</span>
-            </button>
+          {/* UNDO BUTTON */}
+          <button
+            type="button"
+            onClick={handleUndo}
+            disabled={history.length <= 1}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs tracking-wider uppercase transition shadow disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+          >
+            <Undo2 className="w-4 h-4" />
+            <span>Undo Step</span>
+          </button>
 
-            <button
-              type="button"
-              onClick={handleHexClick}
-              className={`p-3.5 rounded-xl border text-center font-bold tracking-wide transition shadow-lg flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                currentStep === 'hex'
-                  ? 'bg-gradient-to-r from-cyan-600 to-blue-600 border-cyan-400 text-white shadow-cyan-500/25 ring-2 ring-cyan-400 scale-[1.02]'
-                  : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-              }`}
-            >
-              <span className="text-base">2. HEXADECIMAL</span>
-              <span className="text-[10px] font-normal opacity-80">Decodes Hex → ROT13</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={handleRot13Click}
-              className={`p-3.5 rounded-xl border text-center font-bold tracking-wide transition shadow-lg flex flex-col items-center justify-center gap-1 cursor-pointer ${
-                currentStep === 'rot13'
-                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 border-emerald-400 text-white shadow-emerald-500/25 ring-2 ring-emerald-400 scale-[1.02]'
-                  : 'bg-slate-800 hover:bg-slate-700/80 border-slate-700 text-slate-300'
-              }`}
-            >
-              <span className="text-base">3. ROT13</span>
-              <span className="text-[10px] font-normal opacity-80">Decodes ROT13 → Original</span>
-            </button>
-          </div>
+          {/* RESET BUFFER BUTTON */}
+          <button
+            type="button"
+            onClick={handleReset}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/40 text-rose-300 font-bold text-xs tracking-wider uppercase transition shadow cursor-pointer"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Reset Buffer</span>
+          </button>
         </div>
 
-        {/* Decoy / Junk Buttons */}
+        {/* SHUFFLED CIPHER BUTTONS (ALL SAME SIZE, UNIFORM GRID) */}
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2 flex items-center justify-between">
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <HelpCircle className="w-3.5 h-3.5 text-rose-400" />
-              Auxiliary / Decoy Algorithms
-            </span>
-            <span className="text-[11px] text-slate-500 lowercase">
-              (caution: incompatible algorithms yield corrupted noise)
-            </span>
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-300 mb-3">
+            Select Decryption Algorithm:
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'rot5', label: 'ROT5 (Digits)' },
-              { id: 'octal', label: 'Octal (Base-8)' },
-              { id: 'binary', label: 'Binary Stream' },
-              { id: 'atbash', label: 'Atbash Cipher' },
-              { id: 'caesar7', label: 'Caesar Shift 7' },
-            ].map((decoy) => (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {buttons.map((btn) => (
               <button
-                key={decoy.id}
+                key={btn.id}
                 type="button"
-                onClick={() => handleDecoyClick(decoy.id)}
-                className="px-3 py-2 rounded-lg bg-slate-950/70 hover:bg-rose-950/30 border border-slate-800 hover:border-rose-800/60 text-slate-400 hover:text-rose-300 text-xs font-mono transition cursor-pointer"
+                onClick={() => handleCipherButtonClick(btn.id)}
+                className="h-16 rounded-xl border border-slate-700 bg-slate-950/80 hover:bg-slate-800 hover:border-cyan-500 text-slate-100 hover:text-cyan-300 font-mono font-bold text-sm tracking-wider uppercase transition-all shadow-md active:scale-95 flex items-center justify-center cursor-pointer"
               >
-                [{decoy.label}]
+                {btn.name}
               </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Terminal Action Log */}
-      {actionHistory.length > 0 && (
-        <div className="bg-slate-950 border border-slate-800/80 rounded-xl p-4 text-xs font-mono text-slate-400">
-          <div className="text-[11px] uppercase tracking-wider text-slate-500 mb-2">
-            Local Activity Stream (Synced to Supabase in real-time)
-          </div>
-          <div className="space-y-1">
-            {actionHistory.map((item, i) => (
-              <div key={i} className="text-slate-300">
-                &gt; {item}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* SUCCESS POP-UP MODAL BOX */}
+      {/* SUCCESS POP-UP MODAL BOX WITH PROMINENT NOTICE */}
       {showSuccessModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="bg-gradient-to-b from-slate-900 to-slate-950 border-2 border-emerald-500/80 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl shadow-emerald-500/20 text-center relative">
@@ -466,14 +259,19 @@ export default function Stage2({ team, onProceedToStage3 }: Props) {
             </div>
 
             <h3 className="text-2xl font-black text-white mb-2">
-              Stage 2 Decryption Complete
+              Stage 2 Decrypted Successfully
             </h3>
-            <p className="text-slate-300 text-xs sm:text-sm mb-6">
-              You have stripped through Base64, Hexadecimal, and ROT13 layers. Below is your official decrypted string:
-            </p>
 
-            {/* Display the original string */}
-            <div className="p-4 rounded-xl bg-slate-900 border border-emerald-700/60 text-emerald-300 font-mono font-bold text-sm sm:text-base break-words mb-6 select-all shadow-inner">
+            {/* MANDATORY WARNING/NOTE POPUP BANNER */}
+            <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs sm:text-sm font-semibold flex items-center gap-2.5 text-left mb-5">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>
+                Please keep note of the answers and codes in this stage for future reference!
+              </span>
+            </div>
+
+            {/* Original string */}
+            <div className="p-4 rounded-xl bg-slate-900 border border-emerald-700/60 text-emerald-300 font-mono font-bold text-sm sm:text-base break-words mb-5 select-all shadow-inner">
               {cipherStages.originalString}
             </div>
 
