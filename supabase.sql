@@ -45,7 +45,14 @@ CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON public.activity_logs 
 ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
--- 5. Open RLS Policies for Anon Role (Hackathon/Contest Mode: enables direct sync without complex auth)
+-- 5. Grant table access to anon, authenticated, and service_role
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.teams TO anon, authenticated, service_role;
+GRANT ALL ON TABLE public.activity_logs TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+
+-- 6. Open RLS Policies for Anon Role (Hackathon/Contest Mode: enables direct sync without complex auth)
+
 DROP POLICY IF EXISTS "Allow anon read teams" ON public.teams;
 CREATE POLICY "Allow anon read teams" ON public.teams FOR SELECT USING (true);
 
