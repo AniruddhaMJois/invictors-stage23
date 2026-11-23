@@ -14,6 +14,7 @@ import {
   Lock,
   Compass,
   FileCheck2,
+  ShieldAlert,
 } from 'lucide-react';
 
 interface Props {
@@ -51,7 +52,7 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     }
 
     if (!sentenceInput.trim()) {
-      setErrorMessage('Please enter the secret sentence.');
+      setErrorMessage('Security Officer: Clearance statement cannot be empty.');
       return;
     }
 
@@ -66,7 +67,7 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     if (!result.isValid) {
       setErrorMessage(
         result.errorMessage ||
-          'Sentence verification failed. Ensure your sentence includes an "I am [role]" declaration along with your assigned fragment code and secret word.'
+          'Security Officer: Clearance rejected. Statement does not meet vault access requirements.'
       );
       setIsSubmitting(false);
       return;
@@ -119,6 +120,8 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
     );
   }
 
+  const wordCount = sentenceInput.trim().split(/\s+/).filter(Boolean).length;
+
   return (
     <div className="max-w-3xl mx-auto w-full px-4 py-6">
       {/* Header */}
@@ -127,36 +130,53 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <span className="px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400 border border-purple-500/30">
-                Stage 3
+                Stage 3: Security Officer Checkpoint
               </span>
               <span className="text-xs text-slate-400">Team #{team.team_number}</span>
             </div>
-            <h2 className="text-2xl font-black text-white">Secret Sentence Authentication</h2>
+            <h2 className="text-2xl font-black text-white">Vault Access Authorization</h2>
           </div>
 
           {solved ? (
             <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/50 text-emerald-400 text-xs font-bold self-start sm:self-auto">
               <CheckCircle2 className="w-4 h-4" />
-              <span>Verified &amp; Solved</span>
+              <span>Access Granted</span>
             </div>
           ) : (
             <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-purple-300 text-xs font-semibold self-start sm:self-auto">
               <FileCheck2 className="w-4 h-4" />
-              <span>Awaiting Authentication</span>
+              <span>Checkpoint Active</span>
             </div>
           )}
         </div>
 
-        {/* Clean Form without spoiler instructions or live checklist */}
+        {/* SECURITY OFFICER TRANSMISSION PROMPT */}
+        <div className="p-4 sm:p-5 rounded-xl bg-slate-950 border border-purple-500/30 text-slate-200 text-xs sm:text-sm leading-relaxed mb-6 font-mono shadow-inner">
+          <div className="text-purple-400 font-bold text-xs uppercase tracking-wider mb-2 flex items-center gap-2">
+            <ShieldAlert className="w-4 h-4 text-purple-400 shrink-0" />
+            <span>Security Officer Prompt:</span>
+          </div>
+          <p className="text-slate-300 leading-relaxed mb-3">
+            &ldquo;Halt! Identify yourself to checkpoint control. To breach this vault, you must submit a formal clearance dispatch: assign yourself your operational role using an <span className="text-cyan-300 font-bold">&quot;I am [role]&quot;</span> declaration, furnish the cryptographic keys recovered from previous stages, and formally <span className="text-purple-300 font-bold">request to grant access to the vault</span>.&rdquo;
+          </p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[11px] text-slate-400 pt-3 border-t border-slate-800/80">
+            <span className="flex items-center gap-1">• Minimum 15 words</span>
+            <span className="flex items-center gap-1">• Assign yourself a role (&quot;I am [role]&quot;)</span>
+            <span className="flex items-center gap-1">• Keys recovered from previous stages</span>
+            <span className="flex items-center gap-1">• Request to grant access to the vault</span>
+          </div>
+        </div>
+
+        {/* Dispatch Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
             <label className="block text-sm font-semibold text-slate-200 mb-2">
-              Enter Secret Sentence
+              Dispatch Statement to Security Officer
             </label>
             <div className="relative">
               <textarea
                 rows={4}
-                placeholder="Enter the secret sentence (minimum 15 words)..."
+                placeholder="e.g. I am [operational role] holding keys [...] and I officially request to grant access to the vault..."
                 value={sentenceInput}
                 onChange={(e) => setSentenceInput(e.target.value)}
                 disabled={solved}
@@ -166,16 +186,14 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
             </div>
             <div className="flex items-center justify-between mt-1.5 text-xs">
               <span className="text-slate-400">
-                Constraint: Minimum 15 words
+                Protocol: Minimum 15 words required
               </span>
               <span
                 className={`font-mono font-semibold ${
-                  sentenceInput.trim().split(/\s+/).filter(Boolean).length >= 15
-                    ? 'text-emerald-400'
-                    : 'text-amber-400'
+                  wordCount >= 15 ? 'text-emerald-400' : 'text-amber-400'
                 }`}
               >
-                {sentenceInput.trim().split(/\s+/).filter(Boolean).length} / 15 words
+                {wordCount} / 15 words
               </span>
             </div>
           </div>
@@ -196,12 +214,12 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
               {isSubmitting ? (
                 <span className="inline-flex items-center gap-2">
                   <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  Verifying with Supabase...
+                  Security Officer Verifying...
                 </span>
               ) : (
                 <>
                   <Send className="w-4 h-4" />
-                  <span>Verify Secret Sentence</span>
+                  <span>Submit Clearance to Security Officer</span>
                 </>
               )}
             </button>
@@ -227,14 +245,14 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
               </div>
 
               <div className="inline-block px-3 py-1 rounded-full bg-purple-900/80 border border-purple-400/60 text-purple-200 text-xs font-black uppercase tracking-widest mb-3">
-                AUTHENTICATION GRANTED
+                VAULT ACCESS GRANTED
               </div>
 
               <h3 className="text-2xl sm:text-3xl font-black text-white mb-2">
                 Congratulations, {team.team_name}!
               </h3>
               <p className="text-slate-300 text-xs sm:text-sm max-w-md mx-auto mb-6">
-                Your secret sentence has been validated and recorded. Here is your team&apos;s official assigned codeword:
+                Your dispatch statement has been authenticated by the Security Officer. Here is your team&apos;s official assigned codeword:
               </p>
 
               {/* Big Codeword Display */}
@@ -280,11 +298,11 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
             </div>
 
             <div className="inline-block px-3 py-1 rounded-full bg-purple-900/80 border border-purple-400/60 text-purple-200 text-xs font-black uppercase tracking-widest mb-3">
-              STAGE 3 COMPLETED!
+              VAULT ACCESS GRANTED!
             </div>
 
             <h3 className="text-2xl font-black text-white mb-2">
-              Authentication Granted
+              Clearance Verified by Security Officer
             </h3>
 
             {/* MANDATORY WARNING/NOTE POPUP BANNER */}

@@ -210,6 +210,7 @@ export interface Stage3ValidationResult {
   hasMinWords: boolean;
   wordCount: number;
   hasRoleIntro: boolean;
+  hasVaultRequest: boolean;
   hasFragmentCode: boolean;
   hasSecretWord: boolean;
   extractedRole?: string;
@@ -235,30 +236,39 @@ export function validateStage3Sentence(teamNumber: number, sentence: string): St
   const hasRoleIntro = !!roleMatch;
   const extractedRole = roleMatch ? roleMatch[1].trim() : undefined;
 
-  // 3. Check fragment code (case-insensitive)
+  // 3. Check for formal vault access request
+  // e.g., "request to grant access to the vault", "grant access to the vault", "request access to vault"
+  const vaultRequestPattern = /(?:grant|request(?:ing)?|ask(?:\s+to)?|seek|petition)\s+(?:(?:me|us)\s+)?(?:to\s+grant\s+)?access\s+to\s+(?:the\s+)?vault/i;
+  const fallbackVaultPattern = /\baccess\s+to\s+(?:the\s+)?vault\b/i;
+  const hasVaultRequest = vaultRequestPattern.test(cleanSentence) || fallbackVaultPattern.test(cleanSentence);
+
+  // 4. Check fragment code (case-insensitive)
   const fragmentCodeRegex = new RegExp(`\\b${group.fragmentCode}\\b`, 'i');
   const hasFragmentCode = fragmentCodeRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.fragmentCode.toLowerCase());
 
-  // 4. Check secret word (case-insensitive)
+  // 5. Check secret word (case-insensitive)
   const secretWordRegex = new RegExp(`\\b${group.secretWord}\\b`, 'i');
   const hasSecretWord = secretWordRegex.test(cleanSentence) || cleanSentence.toLowerCase().includes(group.secretWord.toLowerCase());
 
   let errorMessage: string | undefined = undefined;
   if (!hasMinWords) {
-    errorMessage = `Sentence too short (${wordCount}/15 words). The secret sentence must contain a minimum of 15 words.`;
+    errorMessage = `Security Officer: Dispatch rejected. Statement contains only ${wordCount}/15 words. Minimum 15 words required.`;
   } else if (!hasRoleIntro) {
-    errorMessage = 'Sentence must begin or contain an "I am [role]" declaration (e.g. "I am Commander...").';
+    errorMessage = 'Security Officer: Identification rejected. You must assign yourself an operational role using an "I am [role]" statement.';
+  } else if (!hasVaultRequest) {
+    errorMessage = 'Security Officer: Protocol rejected. You must formally request to grant access to the vault (e.g. "...request to grant access to the vault").';
   } else if (!hasFragmentCode || !hasSecretWord) {
-    errorMessage = 'Sentence verification failed: Missing or invalid fragment code or secret word from Stage 2.';
+    errorMessage = 'Security Officer: Access denied. Missing or invalid cryptographic keys from previous stages.';
   }
 
-  const isValid = hasMinWords && hasRoleIntro && hasFragmentCode && hasSecretWord;
+  const isValid = hasMinWords && hasRoleIntro && hasVaultRequest && hasFragmentCode && hasSecretWord;
 
   return {
     isValid,
     hasMinWords,
     wordCount,
     hasRoleIntro,
+    hasVaultRequest,
     hasFragmentCode,
     hasSecretWord,
     extractedRole,
