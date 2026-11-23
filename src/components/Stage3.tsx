@@ -15,14 +15,16 @@ import {
   Compass,
   FileCheck2,
   ShieldAlert,
+  ArrowRight,
 } from 'lucide-react';
 
 interface Props {
   team: TeamRecord;
   onGoToStage2: () => void;
+  onProceedToStage4: () => void;
 }
 
-export default function Stage3({ team, onGoToStage2 }: Props) {
+export default function Stage3({ team, onGoToStage2, onProceedToStage4 }: Props) {
   const group = getTeamGroup(team.team_number);
 
   const [sentenceInput, setSentenceInput] = useState(team.stage3_submission || '');
@@ -330,13 +332,27 @@ export default function Stage3({ team, onGoToStage2 }: Props) {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowSuccessModal(false)}
-              className="w-full py-3.5 px-6 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm tracking-wide shadow-lg shadow-purple-500/25 transition cursor-pointer"
-            >
-              Close Box
-            </button>
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => setShowSuccessModal(false)}
+                className="py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold transition"
+              >
+                Close Box
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  onProceedToStage4();
+                }}
+                className="flex-1 py-3 px-6 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-sm tracking-wide shadow-lg shadow-purple-500/25 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>ENTER STAGE 4</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -276,3 +276,99 @@ export function validateStage3Sentence(teamNumber: number, sentence: string): St
     assignedCodeword: group.finalCodeword,
   };
 }
+
+// Stage 4 Flag Validation
+export interface Stage4ValidationResult {
+  isValid: boolean;
+  errorMessage?: string;
+  expectedPermutationPattern?: string;
+}
+
+export function validateStage4Flag(teamNumber: number, flagInput: string): Stage4ValidationResult {
+  const group = getTeamGroup(teamNumber);
+  const cleanInput = flagInput.trim();
+
+  const match = cleanInput.match(/^flag\{(.+)\}$/i);
+  if (!match) {
+    return {
+      isValid: false,
+      errorMessage: 'Flag format must be enclosed in flag{...} (e.g. flag{part1-part2-part3-part4}).',
+    };
+  }
+
+  const inner = match[1];
+  // Support both hyphen (-) and comma (,) as separators
+  const parts = inner.split(/[,-]/).map((s) => s.trim()).filter(Boolean);
+
+  if (parts.length !== 4) {
+    return {
+      isValid: false,
+      errorMessage: `Flag must contain exactly 4 parameters separated by hyphens or commas (received ${parts.length}).`,
+    };
+  }
+
+  // Predefined group parameters:
+  // 1: first stage answer (anything non-empty)
+  // 2.1: fragment code in stage 2
+  // 2.2: secret word in stage 2
+  // 3: word received in stage 3
+  //
+  // Group 1 (teams 1,7,5,9,3,8): flag{2.1, 3, 1, 2.2} -> [4T2, ALPHA, <anything>, AURORA]
+  // Group 2 (teams 2,10,4,11,13,18): flag{3, 1, 2.2, 2.1} -> [SIGMA, <anything>, VECTOR, 8X3]
+  // Group 3 (teams 6,12,15,17,20,21): flag{2.2, 3, 1, 2.1} -> [THUNDER, THETA, <anything>, 6C3]
+  // Group 4 (remaining): flag{1, 3, 2.2, 2.1} -> [<anything>, DELTA, ZIGZAG, 5U2]
+
+  const p0 = parts[0].toUpperCase();
+  const p1 = parts[1].toUpperCase();
+  const p2 = parts[2].toUpperCase();
+  const p3 = parts[3].toUpperCase();
+
+  let isValid = false;
+
+  switch (group.groupId) {
+    case 1: {
+      // Order: 2.1, 3, 1, 2.2
+      isValid =
+        p0 === group.fragmentCode.toUpperCase() &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        parts[2].trim().length > 0 &&
+        p3 === group.secretWord.toUpperCase();
+      break;
+    }
+    case 2: {
+      // Order: 3, 1, 2.2, 2.1
+      isValid =
+        p0 === group.finalCodeword.toUpperCase() &&
+        parts[1].trim().length > 0 &&
+        p2 === group.secretWord.toUpperCase() &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+    case 3: {
+      // Order: 2.2, 3, 1, 2.1
+      isValid =
+        p0 === group.secretWord.toUpperCase() &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        parts[2].trim().length > 0 &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+    case 4:
+    default: {
+      // Order: 1, 3, 2.2, 2.1
+      isValid =
+        parts[0].trim().length > 0 &&
+        p1 === group.finalCodeword.toUpperCase() &&
+        p2 === group.secretWord.toUpperCase() &&
+        p3 === group.fragmentCode.toUpperCase();
+      break;
+    }
+  }
+
+  return {
+    isValid,
+    errorMessage: isValid
+      ? undefined
+      : 'Invalid flag. Check the parameters and test different permutations until you find the correct sequence!',
+  };
+}

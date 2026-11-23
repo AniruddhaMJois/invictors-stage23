@@ -73,34 +73,24 @@ export default function Stage2({ team, onProceedToStage3 }: Props) {
   };
 
   // Undo button: restore previous buffer from history
-  const handleUndo = async () => {
+  const handleUndo = () => {
     if (history.length > 1) {
       const newHistory = [...history];
       newHistory.pop(); // remove current
       const previousState = newHistory[newHistory.length - 1];
       setHistory(newHistory);
       setCurrentBuffer(previousState);
-
-      await logActivity(team.team_name, team.team_number, 2, 'UNDO_CLICKED', {
-        restoredLength: previousState.length,
-      });
     }
   };
 
   // Reset button: restore initial Base64 buffer
-  const handleReset = async () => {
+  const handleReset = () => {
     setCurrentBuffer(cipherStages.base64String);
     setHistory([cipherStages.base64String]);
-
-    await logActivity(team.team_name, team.team_number, 2, 'RESET_BUFFER_CLICKED', {});
   };
 
-  // Generic cipher button click handler
+  // Generic cipher button click handler (only logs when final answer is generated)
   const handleCipherButtonClick = async (btnId: string) => {
-    await logActivity(team.team_name, team.team_number, 2, 'CIPHER_BUTTON_CLICKED', {
-      button: btnId,
-    });
-
     if (isSolved) {
       setShowSuccessModal(true);
       return;

@@ -1,5 +1,5 @@
 -- ==============================================================================
--- SUPABASE SCHEMA FOR CIPHER QUEST: STAGE 2 & STAGE 3
+-- SUPABASE SCHEMA FOR CIPHER QUEST: STAGES 2, 3 & 4
 -- Run this entire script in your Supabase SQL Editor (Dashboard -> SQL Editor -> New Query)
 -- ==============================================================================
 
@@ -19,39 +19,30 @@ CREATE TABLE IF NOT EXISTS public.teams (
     stage3_solved BOOLEAN NOT NULL DEFAULT FALSE,
     stage3_submission TEXT,
     stage3_solved_at TIMESTAMPTZ,
+    stage4_solved BOOLEAN NOT NULL DEFAULT FALSE,
+    stage4_submission TEXT,
+    stage4_solved_at TIMESTAMPTZ,
     current_stage INTEGER NOT NULL DEFAULT 2,
     created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
 );
 
--- 2. Create Activity Logs Table (Syncs every action, button click, decode attempt, submission)
-CREATE TABLE IF NOT EXISTS public.activity_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    team_name TEXT NOT NULL,
-    team_number INTEGER NOT NULL,
-    stage INTEGER NOT NULL,
-    action_type TEXT NOT NULL,
-    details JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now())
-);
+-- Ensure stage4 columns exist if table was already created
+ALTER TABLE public.teams 
+ADD COLUMN IF NOT EXISTS stage4_solved BOOLEAN NOT NULL DEFAULT FALSE,
+ADD COLUMN IF NOT EXISTS stage4_submission TEXT,
+ADD COLUMN IF NOT EXISTS stage4_solved_at TIMESTAMPTZ;
 
--- 3. Indexes for fast lookup
+-- 2. Indexes for fast lookup
 CREATE INDEX IF NOT EXISTS idx_teams_team_name ON public.teams (LOWER(team_name));
 CREATE INDEX IF NOT EXISTS idx_teams_team_number ON public.teams (team_number);
-CREATE INDEX IF NOT EXISTS idx_activity_logs_team_name ON public.activity_logs (LOWER(team_name));
-CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON public.activity_logs (created_at DESC);
 
--- 4. Enable Row Level Security (RLS)
+-- 3. Enable Row Level Security (RLS) on teams
 ALTER TABLE public.teams ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
--- 5. Grant table access to anon, authenticated, and service_role
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON TABLE public.teams TO anon, authenticated, service_role;
-GRANT ALL ON TABLE public.activity_logs TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
-
--- 6. Open RLS Policies for Anon Role (Hackathon/Contest Mode: enables direct sync without complex auth)
 
 DROP POLICY IF EXISTS "Allow anon read teams" ON public.teams;
 CREATE POLICY "Allow anon read teams" ON public.teams FOR SELECT USING (true);
@@ -62,13 +53,55 @@ CREATE POLICY "Allow anon insert teams" ON public.teams FOR INSERT WITH CHECK (t
 DROP POLICY IF EXISTS "Allow anon update teams" ON public.teams;
 CREATE POLICY "Allow anon update teams" ON public.teams FOR UPDATE USING (true);
 
-DROP POLICY IF EXISTS "Allow anon insert activity_logs" ON public.activity_logs;
-CREATE POLICY "Allow anon insert activity_logs" ON public.activity_logs FOR INSERT WITH CHECK (true);
+-- 4. Dynamic Team-Specific Activity Log Procedure
+-- Automatically creates separate 'team_<number>_logs' tables for all teams
+CREATE OR REPLACE FUNCTION public.log_team_activity(
+  p_team_number INT,
+  p_team_name TEXT,
+  p_stage INT,
+  p_action_type TEXT,
+  p_details JSONB DEFAULT '{}'::jsonb
+) RETURNS void AS $$
+DECLARE
+  v_table_name text := 'team_' || p_team_number || '_logs';
+BEGIN
+  EXECUTE format('
+    CREATE TABLE IF NOT EXISTS public.%I (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      team_name TEXT NOT NULL,
+      team_number INT NOT NULL,
+      stage INT NOT NULL,
+      action_type TEXT NOT NULL,
+      details JSONB NOT NULL DEFAULT ''{}''::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT timezone(''utc''::text, now())
+    )', v_table_name);
+  
+  EXECUTE format('
+    GRANT ALL ON TABLE public.%I TO anon, authenticated, service_role
+  ', v_table_name);
 
-DROP POLICY IF EXISTS "Allow anon select activity_logs" ON public.activity_logs;
-CREATE POLICY "Allow anon select activity_logs" ON public.activity_logs FOR SELECT USING (true);
+  EXECUTE format('
+    ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY
+  ', v_table_name);
 
--- 6. Trigger to auto-update 'updated_at' on teams
+  BEGIN
+    EXECUTE format('
+      CREATE POLICY "Allow anon all on %1$s" ON public.%1$I FOR ALL USING (true) WITH CHECK (true);
+    ', v_table_name);
+  EXCEPTION WHEN duplicate_object THEN
+    -- ignore if policy exists
+  END;
+
+  EXECUTE format('
+    INSERT INTO public.%I (team_name, team_number, stage, action_type, details)
+    VALUES ($1, $2, $3, $4, $5)
+  ', v_table_name) USING p_team_name, p_team_number, p_stage, p_action_type, p_details;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+GRANT EXECUTE ON FUNCTION public.log_team_activity(INT, TEXT, INT, TEXT, JSONB) TO anon, authenticated, service_role;
+
+-- 5. Trigger to auto-update 'updated_at' on teams
 CREATE OR REPLACE FUNCTION public.set_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -82,7 +115,3 @@ CREATE TRIGGER update_teams_modtime
     BEFORE UPDATE ON public.teams
     FOR EACH ROW
     EXECUTE FUNCTION public.set_updated_at();
-
--- Verification Query:
--- SELECT * FROM public.teams;
--- SELECT * FROM public.activity_logs ORDER BY created_at DESC;
