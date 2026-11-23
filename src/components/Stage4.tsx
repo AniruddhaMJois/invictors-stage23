@@ -359,7 +359,7 @@ export default function Stage4({ team, onGoToStage3, onStage4Completed }: Props)
             </div>
 
             <h3 className="text-2xl font-black text-white mb-2">
-              Stage 4 &amp; Quest Completed
+              FINAL OVERRIDE 2026 Completed
             </h3>
 
             {/* MANDATORY WARNING/NOTE POPUP BANNER */}

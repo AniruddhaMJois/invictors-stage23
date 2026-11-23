@@ -128,10 +128,10 @@ export default function Home() {
             </div>
             <div>
               <span className="font-extrabold text-base tracking-tight text-white block leading-none">
-                CIPHER QUEST
+                FINAL OVERRIDE 2026
               </span>
-              <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
-                STAGES 2, 3 &amp; 4
+              <span className="text-[10px] text-cyan-400 font-mono tracking-widest uppercase">
+                BY INVICTORS
               </span>
             </div>
           </div>
@@ -261,8 +261,10 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950/80 py-4 text-center text-xs text-slate-500">
-        <div className="max-w-6xl mx-auto px-4 text-center">
-          <span>Cipher Quest • Live Real-Time Synchronized Engine</span>
+        <div className="max-w-6xl mx-auto px-4 text-center flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+          <span className="font-semibold text-slate-300">FINAL OVERRIDE 2026</span>
+          <span className="hidden sm:inline text-slate-600">•</span>
+          <span className="text-cyan-400 font-mono">By INVICTORS</span>
         </div>
       </footer>
     </div>

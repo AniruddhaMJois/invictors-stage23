@@ -61,9 +61,9 @@ export default function TimerHUD({
       }`}
       title={
         isCompleted
-          ? 'Quest Completed: Final Elapsed Time'
+          ? 'FINAL OVERRIDE 2026 Completed: Final Elapsed Time'
           : questStartedAt
-          ? 'Quest Active: Live Elapsed Time'
+          ? 'FINAL OVERRIDE 2026 Active: Live Elapsed Time'
           : 'Timer starts upon entering Stage 2'
       }
     >

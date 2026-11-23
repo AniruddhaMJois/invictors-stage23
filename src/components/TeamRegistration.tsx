@@ -84,11 +84,14 @@ export default function TeamRegistration({ onTeamRegistered }: Props) {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 mb-4 shadow-lg shadow-cyan-500/10">
             <Shield className="w-8 h-8" />
           </div>
+          <div className="inline-block px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-800/60 text-cyan-400 text-xs font-mono font-semibold uppercase tracking-widest mb-3">
+            By INVICTORS
+          </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-            Cipher Quest Portal
+            FINAL OVERRIDE 2026
           </h1>
           <p className="text-slate-400 text-sm sm:text-base">
-            Register your team to initialize your cryptographic sequence for <span className="text-cyan-400 font-semibold">STAGE 2</span> and <span className="text-cyan-400 font-semibold">STAGE 3</span>.
+            Register your team to initialize your cryptographic sequence for <span className="text-cyan-400 font-semibold">STAGE 2</span>, <span className="text-purple-400 font-semibold">STAGE 3</span>, and <span className="text-rose-400 font-semibold">STAGE 4</span>.
           </p>
         </div>
 
