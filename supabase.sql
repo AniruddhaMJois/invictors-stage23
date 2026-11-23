@@ -3,6 +3,9 @@
 -- Run this entire script in your Supabase SQL Editor (Dashboard -> SQL Editor -> New Query)
 -- ==============================================================================
 
+-- Remove legacy activity_logs table (each team has its own separate log table)
+DROP TABLE IF EXISTS public.activity_logs CASCADE;
+
 -- 1. Create Teams Table
 CREATE TABLE IF NOT EXISTS public.teams (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -54,7 +57,7 @@ DROP POLICY IF EXISTS "Allow anon update teams" ON public.teams;
 CREATE POLICY "Allow anon update teams" ON public.teams FOR UPDATE USING (true);
 
 -- 4. Dynamic Team-Specific Activity Log Procedure
--- Automatically creates separate 'team_<number>_logs' tables for all teams
+-- Automatically creates separate 'team_<number>_logs' tables for each team, sorted by timestamp
 CREATE OR REPLACE FUNCTION public.log_team_activity(
   p_team_number INT,
   p_team_name TEXT,
@@ -64,6 +67,7 @@ CREATE OR REPLACE FUNCTION public.log_team_activity(
 ) RETURNS void AS $$
 DECLARE
   v_table_name text := 'team_' || p_team_number || '_logs';
+  v_index_name text := 'idx_team_' || p_team_number || '_logs_created_at';
 BEGIN
   EXECUTE format('
     CREATE TABLE IF NOT EXISTS public.%I (
@@ -76,6 +80,11 @@ BEGIN
       created_at TIMESTAMPTZ NOT NULL DEFAULT timezone(''utc''::text, now())
     )', v_table_name);
   
+  -- Index to arrange team logs sorted by timestamp (created_at ASC)
+  EXECUTE format('
+    CREATE INDEX IF NOT EXISTS %I ON public.%I (created_at ASC)
+  ', v_index_name, v_table_name);
+
   EXECUTE format('
     GRANT ALL ON TABLE public.%I TO anon, authenticated, service_role
   ', v_table_name);
